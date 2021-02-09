@@ -46,10 +46,11 @@ namespace SZ {
 
         std::vector<T> data_ = std::vector<T>(data.get(), data.get() + conf.num);
 
-        struct timespec start, end;
-        clock_gettime(CLOCK_REALTIME, &start);
+//        struct timespec start, end;
+//        clock_gettime(CLOCK_REALTIME, &start);
         std::cout << "****************** Compression ******************" << std::endl;
-
+        std::chrono::system_clock::time_point startTime, endTime;
+        startTime = std::chrono::system_clock::now();
         auto sz = SZ::make_sz_general_compressor(conf, predictor, SZ::LinearQuantizer<T>(conf.eb, conf.quant_bin),
                                                  SZ::HuffmanEncoder<int>(), SZ::Lossless_zstd());
 
@@ -57,10 +58,11 @@ namespace SZ {
         std::unique_ptr<SZ::uchar[]> compressed;
         compressed.reset(sz.compress(data.get(), compressed_size));
 
-        clock_gettime(CLOCK_REALTIME, &end);
+//        clock_gettime(CLOCK_REALTIME, &end);
+        endTime = std::chrono::system_clock::now();
         std::cout << "Compression time = "
-                  << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
-                  << "s"
+//                  << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
+                    << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
                   << std::endl;
 
         auto ratio = conf.num * sizeof(T) * 1.0 / compressed_size;
@@ -70,14 +72,16 @@ namespace SZ {
         std::cout << "****************** Decompression ****************" << std::endl;
         compressed = SZ::readfile<SZ::uchar>("compressed.dat", compressed_size);
 
-        clock_gettime(CLOCK_REALTIME, &start);
+//        clock_gettime(CLOCK_REALTIME, &start);
+        startTime = std::chrono::system_clock::now();
         std::unique_ptr<T[]> dec_data;
         dec_data.reset(sz.decompress(compressed.get(), compressed_size));
-        clock_gettime(CLOCK_REALTIME, &end);
+        endTime = std::chrono::system_clock::now();
+//        clock_gettime(CLOCK_REALTIME, &end);
         std::cout << "Decompression time: "
-                  << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
-                  << "s"
-                  << std::endl;
+//                  << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
+                    << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
+                    << std::endl;
 
         SZ::verify<T>(data_.data(), dec_data.get(), conf.num);
         return ratio;

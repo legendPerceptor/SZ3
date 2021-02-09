@@ -8,14 +8,14 @@ template<class T, uint N>
 float SZ_Compress_by_config(int argc, char **argv, int argp, std::unique_ptr<T[]> &data, float eb, std::array<size_t, N> dims) {
     SZ::Config<float, N> conf(eb, dims);
     if (argp < argc) {
-        int block_size = atoi(argv[argp++]);
+        int block_size = std::stoi(argv[argp++]);
         conf.block_size = block_size;
         conf.stride = block_size;
     }
 
     if (argp + 1 < argc) {
-        int lorenzo_op = atoi(argv[argp++]);
-        int regression_op = atoi(argv[argp++]);
+        int lorenzo_op = std::stoi(argv[argp++]);
+        int regression_op = std::stoi(argv[argp++]);
         conf.enable_lorenzo = lorenzo_op == 1 || lorenzo_op == 3;
         conf.enable_2ndlorenzo = lorenzo_op == 2 || lorenzo_op == 3;
         conf.enable_regression = regression_op == 1 || regression_op == 3;
@@ -23,7 +23,7 @@ float SZ_Compress_by_config(int argc, char **argv, int argp, std::unique_ptr<T[]
     }
 
     if (argp < argc) {
-        conf.quant_bin = atoi(argv[argp++]);
+        conf.quant_bin = std::stoi(argv[argp++]);
     }
 
     return SZ_Compress(data, conf);
@@ -34,14 +34,14 @@ int main(int argc, char **argv) {
     auto data = SZ::readfile<float>(argv[1], num);
     std::cout << "Read " << num << " elements\n";
 
-    int dim = atoi(argv[2] + 1);
+    int dim = std::stoi(argv[2]);
     assert(1 <= dim && dim <= 4);
     int argp = 3;
     std::vector<size_t> dims(dim);
     for (int i = 0; i < dim; i++) {
-        dims[i] = atoi(argv[argp++]);
+        dims[i] = std::stoi(argv[argp++]);
     }
-    float reb = atof(argv[argp++]);
+    float reb = std::stof(argv[argp++]);
     float max = data[0];
     float min = data[0];
     for (int i = 1; i < num; i++) {

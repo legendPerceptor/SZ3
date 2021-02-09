@@ -174,6 +174,10 @@ namespace SZ {
             return dec_data.release();
         }
 
+        size_t getNumElements(){
+            return num_elements;
+        }
+
 
     private:
         Predictor predictor;
@@ -186,6 +190,7 @@ namespace SZ {
         size_t num_elements;
         std::array<size_t, N> global_dimensions;
     };
+
 
     template<class T, uint N, class Predictor, class Quantizer, class Encoder, class Lossless>
     SZ_General_Compressor<T, N, Predictor, Quantizer, Encoder, Lossless>

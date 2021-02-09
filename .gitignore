@@ -6,3 +6,4 @@ build
 cmake-build-debug/
 .DS_Store
 tools/
+data/downloads/
