@@ -67,10 +67,10 @@ int main(int argc, char **argv) {
     const size_t DIM = 3;
 
     auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
-//    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.1* eb);
+    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.1* eb);
     std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
     predictors_.push_back(P_l);
-//    predictors_.push_back(P_reg);
+    predictors_.push_back(P_reg);
 //    auto cp = std::make_shared<SZ::ComposedPredictor<float, 3>>(predictors_);
     SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{500, 500, 100});
     auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
@@ -93,7 +93,8 @@ int main(int argc, char **argv) {
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     startTime = std::chrono::system_clock::now();
     std::unique_ptr<unsigned char[]> compressed;
-    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range));
+    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, true));
+//    compressed.reset(sz.compress(data.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
     std::cout << "Compression time: "
@@ -115,7 +116,8 @@ int main(int argc, char **argv) {
     startTime = std::chrono::system_clock::now();
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     std::unique_ptr<float[]> dec_data;
-    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range));
+    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, true));
+//    dec_data.reset(sz.decompress(compressed.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
     std::cout << "Decompression time: "

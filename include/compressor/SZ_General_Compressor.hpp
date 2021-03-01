@@ -12,6 +12,7 @@
 #include "utils/FileUtil.h"
 #include "def.hpp"
 #include <cstring>
+#include <encoder/HuffmanEncoder.hpp>
 
 namespace SZ {
     template<class T, size_t N, class Predictor, class Quantizer, class Encoder, class Lossless>
@@ -33,7 +34,7 @@ namespace SZ {
             static_assert(std::is_base_of_v<concepts::LosslessInterface, Lossless>, "must implement the lossless interface");
         }
 
-        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range) {
+        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false) {
             auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
                                                                                          std::begin(global_dimensions),
                                                                                          std::end(global_dimensions),
@@ -44,12 +45,20 @@ namespace SZ {
                                                                                          0);
 
             std::vector<int> quant_inds(num_elements);
-
+            std::vector<int> bitmap(num_elements);
+//            unsigned char** result;
+//            if(use_bitmap) {
+//                bitmap = new int[num_elements];
+//                memset(bitmap, 0, sizeof (int)*num_elements);
+//            }
             T tmp;
             for (auto element = intra_block_range->begin(); element != intra_block_range->end(); ++element) {
                 if (*element == bg_data) {
-                    quant_inds[element.get_offset()] = 2 * quantizer.get_radius() + 1;
-//                    bitmap.push_back(element.get_offset());
+                    if(use_bitmap){
+                        bitmap[element.get_offset()] = 1;
+                    } else{
+                        quant_inds[element.get_offset()] = 2 * quantizer.get_radius() + 1;
+                    }
                     tmp = my_lorenzo.predict(element);
                     if(tmp >= low_range && tmp <= high_range){
                         *element = tmp;
@@ -59,6 +68,11 @@ namespace SZ {
                     }
                 }
             }
+//            if(use_bitmap) {
+//                convertIntArray2ByteArray_fast_1b(bitmap, num_elements, result);
+//                delete[] bitmap;
+//            }
+
 
             std::array<size_t, N> intra_block_dims;
             predictor.precompress_data(inter_block_range->begin());
@@ -92,7 +106,7 @@ namespace SZ {
                     auto intra_begin = intra_block_range->begin();
                     auto intra_end = intra_block_range->end();
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        if (quant_inds[element.get_offset()] == 2 * quantizer.get_radius() + 1) {
+                        if (!use_bitmap && quant_inds[element.get_offset()] == 2 * quantizer.get_radius() + 1) {
                             *element = predictor_withfallback->predict(element);
                         } else {
                             quant_inds[element.get_offset()] = quantizer.quantize_and_overwrite(
@@ -119,6 +133,15 @@ namespace SZ {
             predictor.save(compressed_data_pos);
             quantizer.save(compressed_data_pos);
 
+            if(use_bitmap) {
+                HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
+                bitmap_encoder.preprocess_encode(bitmap,
+                                                 2);
+                bitmap_encoder.save(compressed_data_pos);
+                bitmap_encoder.encode(bitmap, compressed_data_pos);
+                bitmap_encoder.postprocess_encode();
+            }
+
             encoder.preprocess_encode(quant_inds, 2 * quantizer.get_radius() + 2);
             encoder.save(compressed_data_pos);
             encoder.encode(quant_inds, compressed_data_pos);
@@ -131,7 +154,7 @@ namespace SZ {
             return lossless_data;
         }
 
-        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range) {
+        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range, bool use_bitmap=false) {
             size_t remaining_length = length;
             auto compressed_data = lossless.decompress(lossless_compressed_data, remaining_length);
             uchar const *compressed_data_pos = compressed_data;
@@ -146,6 +169,12 @@ namespace SZ {
             stride = block_size;
             predictor.load(compressed_data_pos, remaining_length);
             quantizer.load(compressed_data_pos, remaining_length);
+            HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
+            std::vector<int> bitmap;
+            if(use_bitmap) {
+                bitmap_encoder.load(compressed_data_pos, remaining_length);
+                bitmap = bitmap_encoder.decode(compressed_data_pos, num_elements);
+            }
             encoder.load(compressed_data_pos, remaining_length);
 
             auto quant_inds = encoder.decode(compressed_data_pos, num_elements);
@@ -191,13 +220,8 @@ namespace SZ {
                     auto intra_begin = intra_block_range->begin();
                     auto intra_end = intra_block_range->end();
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        if(quant_inds[element.get_offset()]==2 * quantizer.get_radius() +1){
-                            tmp = predictor_withfallback->predict(element);
-                            if(tmp>= low_range && tmp<=high_range){
-                                *element = tmp;
-                            }else{
-                                *element = (low_range+high_range)/2;
-                            }
+                        if(!use_bitmap && quant_inds[element.get_offset()]==2 * quantizer.get_radius() +1){
+                            *element = predictor_withfallback->predict(element);
 //                            *element = bg;
                         }else {
                             *element = quantizer.recover(predictor_withfallback->predict(element),
@@ -211,7 +235,11 @@ namespace SZ {
                                                                                    std::end(global_dimensions), 1,
                                                                                    0);
             for(auto element = intra_range->begin(); element!=intra_range->end(); element++){
-                if(quant_inds[element.get_offset()] == 2* quantizer.get_radius()+1){
+                if(use_bitmap){
+                    if(bitmap[element.get_offset()]==1){
+                        *element = bg;
+                    }
+                } else if(quant_inds[element.get_offset()] == 2* quantizer.get_radius()+1){
                     *element = bg;
                 }
             }
@@ -381,6 +409,7 @@ namespace SZ {
         uint stride;
         size_t num_elements;
         std::array<size_t, N> global_dimensions;
+
     };
 
 
@@ -391,6 +420,9 @@ namespace SZ {
         return SZ_General_Compressor<T, N, Predictor, Quantizer, Encoder, Lossless>(conf, predictor, quantizer, encoder,
                                                                                     lossless);
     }
+
+
+
 }
 #endif
 
