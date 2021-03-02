@@ -56,6 +56,8 @@ int main(int argc, char **argv) {
     float eb = 0.1;
     float low_range=-83.00402, high_range=31.51576;
     float bg = 1.0000000e+35;
+    bool preserve_sign = true;
+    bool use_bitmap = true;
     int count = 0;
     for(int i =0; i<num;i++) {
         if(data[i]==0){
@@ -93,7 +95,7 @@ int main(int argc, char **argv) {
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     startTime = std::chrono::system_clock::now();
     std::unique_ptr<unsigned char[]> compressed;
-    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, true));
+    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign));
 //    compressed.reset(sz.compress(data.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
@@ -116,7 +118,7 @@ int main(int argc, char **argv) {
     startTime = std::chrono::system_clock::now();
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     std::unique_ptr<float[]> dec_data;
-    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, true));
+    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign));
 //    dec_data.reset(sz.decompress(compressed.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();

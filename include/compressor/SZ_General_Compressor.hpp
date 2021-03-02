@@ -34,7 +34,7 @@ namespace SZ {
             static_assert(std::is_base_of_v<concepts::LosslessInterface, Lossless>, "must implement the lossless interface");
         }
 
-        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false) {
+        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false) {
             auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
                                                                                          std::begin(global_dimensions),
                                                                                          std::end(global_dimensions),
@@ -46,6 +46,7 @@ namespace SZ {
 
             std::vector<int> quant_inds(num_elements);
             std::vector<int> bitmap(num_elements);
+            std::vector<int> signs(num_elements);
 //            unsigned char** result;
 //            if(use_bitmap) {
 //                bitmap = new int[num_elements];
@@ -65,6 +66,15 @@ namespace SZ {
                     } else {
                         tmp = (low_range + high_range)/2;
                         *element = tmp;
+                    }
+                }
+                if(preserve_sign){
+                    if(*element>0) {
+                        signs[element.get_offset()] = 1;
+                    }else if(*element==0) {
+                        signs[element.get_offset()] = 0;
+                    }else if(*element<0) {
+                        signs[element.get_offset()] = 2;
                     }
                 }
             }
@@ -142,6 +152,15 @@ namespace SZ {
                 bitmap_encoder.postprocess_encode();
             }
 
+            if(preserve_sign){
+                HuffmanEncoder<int> signs_encoder = HuffmanEncoder<int>();
+                signs_encoder.preprocess_encode(signs,
+                                                 3);
+                signs_encoder.save(compressed_data_pos);
+                signs_encoder.encode(signs, compressed_data_pos);
+                signs_encoder.postprocess_encode();
+            }
+
             encoder.preprocess_encode(quant_inds, 2 * quantizer.get_radius() + 2);
             encoder.save(compressed_data_pos);
             encoder.encode(quant_inds, compressed_data_pos);
@@ -154,7 +173,7 @@ namespace SZ {
             return lossless_data;
         }
 
-        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range, bool use_bitmap=false) {
+        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false) {
             size_t remaining_length = length;
             auto compressed_data = lossless.decompress(lossless_compressed_data, remaining_length);
             uchar const *compressed_data_pos = compressed_data;
@@ -169,11 +188,17 @@ namespace SZ {
             stride = block_size;
             predictor.load(compressed_data_pos, remaining_length);
             quantizer.load(compressed_data_pos, remaining_length);
-            HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
             std::vector<int> bitmap;
+            std::vector<int> signs;
             if(use_bitmap) {
+                HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
                 bitmap_encoder.load(compressed_data_pos, remaining_length);
                 bitmap = bitmap_encoder.decode(compressed_data_pos, num_elements);
+            }
+            if(preserve_sign){
+                HuffmanEncoder<int> signs_encoder = HuffmanEncoder<int>();
+                signs_encoder.load(compressed_data_pos, remaining_length);
+                signs = signs_encoder.decode(compressed_data_pos, num_elements);
             }
             encoder.load(compressed_data_pos, remaining_length);
 
@@ -235,12 +260,24 @@ namespace SZ {
                                                                                    std::end(global_dimensions), 1,
                                                                                    0);
             for(auto element = intra_range->begin(); element!=intra_range->end(); element++){
+                int index = element.get_offset();
+                bool isBG = false;
                 if(use_bitmap){
-                    if(bitmap[element.get_offset()]==1){
+                    if(bitmap[index]==1){
                         *element = bg;
+                        isBG = true;
                     }
-                } else if(quant_inds[element.get_offset()] == 2* quantizer.get_radius()+1){
+                } else if(quant_inds[index] == 2* quantizer.get_radius()+1){
                     *element = bg;
+                    isBG = true;
+                }
+                if(preserve_sign && !isBG){
+                    if(signs[index]==0){
+                        *element = 0;
+                    }
+                    if((*element>0 && signs[index]==2)||(*element<0 && signs[index==1])){
+                        *element = -*element;
+                    }
                 }
             }
 
