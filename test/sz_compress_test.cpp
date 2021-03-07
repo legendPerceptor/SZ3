@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
     printData(data.get());
     float eb = 0.1;
     float low_range=-83.00402, high_range=31.51576;
+//    float low_range = -1000, high_range = 1000;
     float bg = 1.0000000e+35;
     bool preserve_sign = true;
     bool use_bitmap = true;
@@ -74,12 +75,15 @@ int main(int argc, char **argv) {
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 //    auto cp = std::make_shared<SZ::ComposedPredictor<float, 3>>(predictors_);
+    auto ebs = std::vector<std::tuple<float, float, float>>();
+//    ebs.push_back(std::tuple<float,float,float>(low_range, high_range, eb));
+    ebs.emplace_back(low_range, high_range, eb);
     SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{500, 500, 100});
-    auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+    auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
             SZ::ComposedPredictor<float, DIM>(predictors_),
-            SZ::LinearQuantizer<float>(eb),
-//            SZ::BGDataQuantizer<float, DIM>(eb, bg,low_range, high_range),
+//            SZ::LinearQuantizer<float>(eb),
+            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
             SZ::HuffmanEncoder<int>(),
             SZ::Lossless_zstd()
     );

@@ -64,7 +64,8 @@ namespace SZ {
                     if(tmp >= low_range && tmp <= high_range){
                         *element = tmp;
                     } else {
-                        tmp = (low_range + high_range)/2;
+//                        tmp = (low_range + high_range)/2;
+                        tmp = 0;
                         *element = tmp;
                     }
                 }
@@ -132,6 +133,14 @@ namespace SZ {
                       << (double) (end.tv_sec - start.tv_sec) +
                          (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
                       << "s" << std::endl;
+
+            int z =1;
+            for (int y=0; y< 100; y++) {
+                for(int x=0;x<500;x++){
+                    printf("%g  ",data[x + 500*(y+500*z)]);
+                }
+                printf("\n");
+            }
 
             predictor.postcompress_data(inter_block_range->begin());
             quantizer.postcompress_data();
