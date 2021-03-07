@@ -129,7 +129,7 @@ namespace SZ {
 //    template<class T>
 //    inline int LinearQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
 //
-//        int quant_index = floor((data - pred) * this->error_bound_reciprocal_divided_by_2 + 0.5);
+//        int quant_index = round((data - pred) * this->error_bound_reciprocal_divided_by_2 + 0.5);
 //        int quant = 0;
 //        if (abs(quant_index) < this->radius) {
 //            T decom = pred + quant_index * this->error_bound_times_2;
@@ -148,30 +148,41 @@ namespace SZ {
     inline int LinearQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
 
         T diff = data - pred;
-        int quant_index = (int) (fabs(diff) * this->error_bound_reciprocal) + 1;
-        if (quant_index < this->radius * 2) {
-            quant_index >>= 1;
-            int half_index = quant_index;
-            quant_index <<= 1;
-            int quant_index_shifted;
-            if (diff < 0) {
-                quant_index = -quant_index;
-                quant_index_shifted = this->radius - half_index;
-            } else {
-                quant_index_shifted = this->radius + half_index;
-            }
-            T decompressed_data = pred + quant_index * this->error_bound;
-            if (fabs(decompressed_data - data) > this->error_bound) {
-                unpred.push_back(data);
-                return 0;
-            } else {
-                data = decompressed_data;
-                return quant_index_shifted;
-            }
-        } else {
+        T error_bound = this->error_bound;
+        T error_bound_reciprocal = this->error_bound_reciprocal;
+        int quant_index_shifted = this->radius + round(diff * error_bound_reciprocal/2.0);
+        T decompressed_data = pred + (quant_index_shifted - this->radius)*2 * error_bound;
+        if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > error_bound) {
+            // Handle Unpredictable data
             unpred.push_back(data);
-            return 0;
+            return 0;// 0 denotes unpredictable data
         }
+        data = decompressed_data;
+        return quant_index_shifted;
+//        int quant_index = (int) (fabs(diff) * this->error_bound_reciprocal) + 1;
+//        if (quant_index < this->radius * 2) {
+//            quant_index >>= 1;
+//            int half_index = quant_index;
+//            quant_index <<= 1;
+//            int quant_index_shifted;
+//            if (diff < 0) {
+//                quant_index = -quant_index;
+//                quant_index_shifted = this->radius - half_index;
+//            } else {
+//                quant_index_shifted = this->radius + half_index;
+//            }
+//            T decompressed_data = pred + quant_index * this->error_bound;
+//            if (fabs(decompressed_data - data) > this->error_bound) {
+//                unpred.push_back(data);
+//                return 0;
+//            } else {
+//                data = decompressed_data;
+//                return quant_index_shifted;
+//            }
+//        } else {
+//            unpred.push_back(data);
+//            return 0;
+//        }
     }
 
     template<class T>
@@ -188,7 +199,10 @@ namespace SZ {
     template<class T>
     class MultipleErrorBoundsQuantizer : public concepts::QuantizerInterface<T>  {
     public:
-        MultipleErrorBoundsQuantizer(std::vector<std::tuple<T,T,T>> eb, int r = 32768):ebs(eb), radius(r),last_pred_range(-1), last_data_range(-1) {
+        MultipleErrorBoundsQuantizer(std::vector<std::tuple<T,T,T>> eb, int r = 32768):ebs(eb), radius(r){
+            init();
+        }
+        void init(){
             for(int i=0;i<ebs.size();i++){
                 T low = std::get<0>(ebs[i]);
                 T high = std::get<1>(ebs[i]);
@@ -200,10 +214,13 @@ namespace SZ {
                 }else{
                     quant_num = (int)floor(tmp);
                 }
+//                quant_num = (int)round(tmp);
                 std::get<2>(ebs[i]) = (high-low)/(2*quant_num);
                 quant_range.push_back(quant_num);
             }
             range_size = ebs.size();
+            last_data_range = -1;
+            last_data_range = -1;
         }
 
         void precompress_data() const {}
@@ -279,6 +296,7 @@ namespace SZ {
             // std::cout << "loading: eb = " << this->error_bound << ", unpred_num = "  << unpred.size() << std::endl;
             // reset index
             index = 0;
+            init();
         }
 
         void clear() {
@@ -297,7 +315,7 @@ namespace SZ {
 
         int getErrorBoundIndex(const T& data, bool change_last){
             int cur_range;
-            if(data<= std::get<1>(ebs[0])){
+            if(data< std::get<1>(ebs[0])){
                 cur_range = 0;
             } else if(data>= std::get<0>(ebs[ebs.size()-1])) {
                 cur_range = range_size - 1;
@@ -308,7 +326,7 @@ namespace SZ {
                     cur_range = 0;
                 }
                 if (std::get<0>(ebs[cur_range]) <= data) {
-                    while (data > std::get<1>(ebs[cur_range]) && cur_range < range_size - 1) {
+                    while (data >= std::get<1>(ebs[cur_range]) && cur_range < range_size - 1) {
                         cur_range++;
                     }
                 } else {
@@ -334,32 +352,45 @@ namespace SZ {
         int quant_index_shifted;
         T decompressed_data;
         int tmp;
+//        assert(pred_index == data_index);
         if(pred_index == data_index){
             T error_bound = std::get<2>(ebs[data_index]);
             T error_bound_reciprocal = 1/error_bound;
             quant_index_shifted = this->radius + round(diff * error_bound_reciprocal/2.0);
             decompressed_data = pred + (quant_index_shifted - this->radius)*2 * error_bound;
+            int tmp_index = getErrorBoundIndex(decompressed_data, false);
+            if(pred_index > tmp_index ){
+                decompressed_data = std::get<0>(ebs[pred_index]);
+            } else if (pred_index < tmp_index) {
+                decompressed_data = std::get<1>(ebs[pred_index]);
+            }
+            if(fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])){
+                decompressed_data = std::get<1>(ebs[tmp_index]);
+            } else if(fabs(decompressed_data - std::get<0>(ebs[tmp_index]))< std::get<2>(ebs[tmp_index])){
+                decompressed_data = std::get<0>(ebs[tmp_index]);
+            }
         } else if(pred_index > data_index) {
             int quant_value = 0;
-            quant_value -= (int)floor((pred - std::get<0>(ebs[pred_index]))/(2*std::get<2>(ebs[pred_index])));
+            quant_value -= (int)round((pred - std::get<0>(ebs[pred_index]))/(2*std::get<2>(ebs[pred_index])));
             for(int i=pred_index-1; i>=data_index+1;i--){
                 quant_value -= quant_range[i];
             }
-            tmp = (int)floor((std::get<1>(ebs[data_index])-data)/(2*std::get<2>(ebs[data_index])));
+            tmp = (int)round((std::get<1>(ebs[data_index])-data)/(2*std::get<2>(ebs[data_index])));
             decompressed_data = std::get<1>(ebs[data_index]) - tmp * (2*std::get<2>(ebs[data_index]));
             quant_value -= tmp;
             quant_index_shifted = this->radius + quant_value;
         } else if(pred_index < data_index) {
             int quant_value = 0;
-            quant_value += (int)floor((std::get<1>(ebs[pred_index]) - pred_index)/(2*std::get<2>(ebs[pred_index])));
+            quant_value += (int)round((std::get<1>(ebs[pred_index]) - pred)/(2*std::get<2>(ebs[pred_index])));
             for(int i=pred_index+1; i<=data_index-1;i++){
                 quant_value += quant_range[i];
             }
-            tmp = (int)floor((data - std::get<0>(ebs[data_index]))/(2*std::get<2>(ebs[data_index])));
+            tmp = (int)round((data - std::get<0>(ebs[data_index]))/(2*std::get<2>(ebs[data_index])));
             decompressed_data = std::get<0>(ebs[data_index]) + tmp * (2*std::get<2>(ebs[data_index]));
             quant_value += tmp;
             quant_index_shifted = this->radius + quant_value;
         }
+
         if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > std::get<2>(ebs[data_index])) {
             // Handle Unpredictable data
             unpred.push_back(data);
@@ -392,35 +423,62 @@ namespace SZ {
         int tmp;
         T decompressed_data = pred;
         if(actual_quant<0){
-            tmp = (int)floor((pred - std::get<0>(ebs[i]))/(2*std::get<2>(ebs[i])));
-            if(actual_quant + tmp < 0){
+            tmp = (int)round((pred - std::get<0>(ebs[pred_index]))/(2*std::get<2>(ebs[pred_index])));
+            if(actual_quant + tmp < 0 && pred_index>0){
                 remaining_quant += tmp;
-                for(i=pred_index-1;i>=0;i--){
-                    if(remaining_quant+quant_range[i]>0){
-                        decompressed_data = std::get<1>(ebs[i]) + 2*remaining_quant*std::get<2>(ebs[i]);
+                for(i=pred_index-1;i>0;i--){
+                    if(remaining_quant+quant_range[i]>=0){
+                        decompressed_data = std::get<1>(ebs[i]) + remaining_quant*(2*std::get<2>(ebs[i]));
                         return decompressed_data;
                     }
                     remaining_quant+=quant_range[i];
                 }
+                // i = 0
+                decompressed_data = std::get<1>(ebs[0]) + remaining_quant*(2*std::get<2>(ebs[0]));
+                return decompressed_data;
             } else {
-                decompressed_data = pred+ 2*remaining_quant*std::get<2>(ebs[pred_index]);
+                decompressed_data = pred+ remaining_quant*(2*std::get<2>(ebs[pred_index]));
+                if(actual_quant+ tmp ==0) {
+                    int tmp_index = getErrorBoundIndex(decompressed_data, false);
+                    if (fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                        decompressed_data = std::get<1>(ebs[tmp_index]);
+                    } else if (fabs(decompressed_data - std::get<0>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                        decompressed_data = std::get<0>(ebs[tmp_index]);
+                    }
+                }
                 return decompressed_data;
             }
         } else if(actual_quant == 0){
-            return pred;
+            int tmp_index = pred_index;
+            decompressed_data = pred;
+            if (fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                decompressed_data = std::get<1>(ebs[tmp_index]);
+            } else if (fabs(decompressed_data - std::get<0>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                decompressed_data = std::get<0>(ebs[tmp_index]);
+            }
+            return decompressed_data;
         } else {
-            tmp = (int)floor((std::get<1>(ebs[i])- pred))/(2*std::get<2>(ebs[i]));
-            if(actual_quant - tmp >0){
+            tmp = (int)round((std::get<1>(ebs[pred_index])- pred)/(2*std::get<2>(ebs[pred_index])));
+            if(actual_quant - tmp >= 0 && pred_index<range_size-1) {
                 remaining_quant -= tmp;
-                for(i=pred_index+1;i<=range_size-1;i++){
-                    if(remaining_quant - quant_range[i]<0){
+                for(i=pred_index+1;i<range_size-1;i++){
+                    if(remaining_quant - quant_range[i]<=0){
                         decompressed_data = std::get<0>(ebs[i]) + 2*remaining_quant*std::get<2>(ebs[i]);
                         return decompressed_data;
                     }
                     remaining_quant -=quant_range[i];
                 }
+                // i = range_size -1
+                decompressed_data = std::get<0>(ebs[range_size -1]) + 2*remaining_quant*std::get<2>(ebs[range_size -1]);
+                return decompressed_data;
             } else {
-                decompressed_data = pred - 2*remaining_quant*std::get<2>(ebs[pred_index]);
+                decompressed_data = pred + 2*remaining_quant*std::get<2>(ebs[pred_index]);
+//                int tmp_index = getErrorBoundIndex(decompressed_data, false);
+//                if(fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])){
+//                    decompressed_data = std::get<1>(ebs[pred_index]);
+//                } else if(fabs(decompressed_data - std::get<0>(ebs[tmp_index]))< std::get<2>(ebs[tmp_index])){
+//                    decompressed_data = std::get<0>(ebs[pred_index]);
+//                }
                 return decompressed_data;
             }
         }

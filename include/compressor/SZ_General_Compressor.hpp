@@ -27,6 +27,8 @@ namespace SZ {
                 block_size(conf.block_size), stride(conf.stride),
                 global_dimensions(conf.dims), num_elements(conf.num),
                 my_lorenzo(LorenzoPredictor<T, N, 1>(conf.eb)){
+            prediction_debug = std::vector<T>(num_elements);
+            element_debug = std::vector<T>(num_elements);
             static_assert(std::is_base_of_v<concepts::PredictorInterface<T, N>, Predictor>,
                           "must implement the predictor interface");
             static_assert(std::is_base_of_v<concepts::QuantizerInterface<T>, Quantizer>, "must implement the quatizer interface");
@@ -117,11 +119,15 @@ namespace SZ {
                     auto intra_begin = intra_block_range->begin();
                     auto intra_end = intra_block_range->end();
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        if (!use_bitmap && quant_inds[element.get_offset()] == 2 * quantizer.get_radius() + 1) {
+                        int offset = element.get_offset();
+                        if (!use_bitmap && quant_inds[offset] == 2 * quantizer.get_radius() + 1) {
                             *element = predictor_withfallback->predict(element);
                         } else {
-                            quant_inds[element.get_offset()] = quantizer.quantize_and_overwrite(
-                                    *element, predictor_withfallback->predict(element));
+                            T pred = predictor_withfallback->predict(element);
+                            prediction_debug[offset] = pred;
+                            quant_inds[offset] = quantizer.quantize_and_overwrite(
+                                    *element, pred);
+                            element_debug[offset] = *element;
                             quant_count++;
                         }
                     }
@@ -254,12 +260,24 @@ namespace SZ {
                     auto intra_begin = intra_block_range->begin();
                     auto intra_end = intra_block_range->end();
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        if(!use_bitmap && quant_inds[element.get_offset()]==2 * quantizer.get_radius() +1){
+                        int offset = element.get_offset();
+                        if(!use_bitmap && quant_inds[offset]==2 * quantizer.get_radius() +1){
                             *element = predictor_withfallback->predict(element);
 //                            *element = bg;
                         }else {
-                            *element = quantizer.recover(predictor_withfallback->predict(element),
+                            T pred = predictor_withfallback->predict(element);
+                            if(fabs(pred - prediction_debug[offset]) > 0.02){
+                                // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
+                                printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
+                                exit(1);
+                            }
+                            *element = quantizer.recover(pred,
                                                          quant_inds[element.get_offset()]);
+                            if( fabs(*element - element_debug[offset]) > 0.02) {
+                                printf("offset: %d, *element=%.4f, debug_element=%.4f\n", offset, *element, element_debug[offset]);
+                                printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
+                                exit(2);
+                            }
                         }
                     }
                 }
@@ -455,6 +473,7 @@ namespace SZ {
         uint stride;
         size_t num_elements;
         std::array<size_t, N> global_dimensions;
+        std::vector<T> prediction_debug, element_debug;
 
     };
 
