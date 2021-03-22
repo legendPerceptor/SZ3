@@ -86,7 +86,8 @@ namespace SZ {
 //                delete[] bitmap;
 //            }
 
-
+//            SZ::writefile("/Users/apple/Development/globus/cleanBG.bin", (float*)data, num_elements);
+//            printf("File cleanBG saved!\n");
             std::array<size_t, N> intra_block_dims;
             predictor.precompress_data(inter_block_range->begin());
             quantizer.precompress_data();
@@ -140,13 +141,13 @@ namespace SZ {
                          (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
                       << "s" << std::endl;
 
-            int z =1;
-            for (int y=0; y< 100; y++) {
-                for(int x=0;x<500;x++){
-                    printf("%g  ",data[x + 500*(y+500*z)]);
-                }
-                printf("\n");
-            }
+//            int z =1;
+//            for (int y=0; y< 100; y++) {
+//                for(int x=0;x<500;x++){
+//                    printf("%g  ",data[x + 500*(y+500*z)]);
+//                }
+//                printf("\n");
+//            }
 
             predictor.postcompress_data(inter_block_range->begin());
             quantizer.postcompress_data();

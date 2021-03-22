@@ -35,6 +35,8 @@ static void convert(float* data, int num) {
 }
 static void printData(float* data) {
     int z =1;
+    printf("special %g\n", data[9098138]);
+//    exit(1);
     for (int y=0; y< 100; y++) {
         for(int x=0;x<500;x++){
             printf("%g  ",data[x + 500*(y+500*z)]);
@@ -53,11 +55,12 @@ int main(int argc, char **argv) {
     convert(data.get(), num);
 //    data.get()[0] = 0;
     printData(data.get());
-    float eb = 0.1;
+
+    float eb =0.1;
 //    float low_range=-83.00402, high_range=31.51576;
-    float low_range = -100, high_range = 100;
+    float low_range = -6000, high_range = 5000;
     float bg = 1.0000000e+35;
-    bool preserve_sign = true;
+    bool preserve_sign = false;
     bool use_bitmap = true;
     int count = 0;
     for(int i =0; i<num;i++) {
@@ -66,6 +69,8 @@ int main(int argc, char **argv) {
         }
     }
     std::cout<<"count: "<< count<<std::endl;
+
+
 
     const size_t DIM = 3;
 
@@ -78,10 +83,10 @@ int main(int argc, char **argv) {
     auto ebs = std::vector<std::tuple<float, float, float>>();
 //    ebs.push_back(std::tuple<float,float,float>(low_range, high_range, eb));
 
-    ebs.emplace_back(low_range, -30, 10 * eb);
+    ebs.emplace_back(low_range, -30, eb);
     ebs.emplace_back(-30, 0, eb);
     ebs.emplace_back(0, 40, eb);
-    ebs.emplace_back(40, high_range, 10 * eb);
+    ebs.emplace_back(40, high_range, eb);
 //    ebs.emplace_back(low_range, high_range, eb);
     SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{500, 500, 100});
     auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
@@ -93,8 +98,11 @@ int main(int argc, char **argv) {
             SZ::Lossless_zstd()
     );
 
-
-
+//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//    float dp= data[9098138];
+//    quantizer.quantize_and_overwrite(dp, 39.5);
+//    printf("tests!!!!!!");
+//    exit(1);
     size_t compressed_size = 0;
     // Change to use Cpp-style timer
     // struct timespec start, end;
@@ -135,7 +143,7 @@ int main(int argc, char **argv) {
               //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
               << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
               << std::endl;
-    printData(dec_data.get());
+//    printData(dec_data.get());
     auto dataV = SZ::readfile<float>(argv[1], num);
     convert(dataV.get(), num);
     float max_err = 0;
@@ -145,10 +153,10 @@ int main(int argc, char **argv) {
             max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
 //            printf("NOTG data: %g, dec_data: %g, i:%d\n", dataV[i], dec_data[i], i);
         }
-        if(abs(dataV[i] - dec_data[i]) > 0.1) {
-            printf("data: %g, dec_data: %g, i:%d\n", dataV[i], dec_data[i], i);
-            break;
-        }
+//        if(abs(dataV[i] - dec_data[i]) > 0.1) {
+//            printf("data: %g, dec_data: %g, i:%d\n", dataV[i], dec_data[i], i);
+//            break;
+//        }
     }
     std::cout << "Max error = " << max_err << std::endl;
     return 0;

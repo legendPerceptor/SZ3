@@ -356,17 +356,21 @@ namespace SZ {
         if(pred_index == data_index){
             T error_bound = std::get<2>(ebs[data_index]);
             T error_bound_reciprocal = 1/error_bound;
-            quant_index_shifted = this->radius + round(diff * error_bound_reciprocal/2.0);
-            decompressed_data = pred + (quant_index_shifted - this->radius)*2 * error_bound;
+            int quant = (int)round(diff *(error_bound_reciprocal*0.5));
+            quant_index_shifted = this->radius + quant;
+            decompressed_data = pred + quant* 2 * error_bound;
             int tmp_index = getErrorBoundIndex(decompressed_data, false);
             if(pred_index > tmp_index ){
                 decompressed_data = std::get<0>(ebs[pred_index]);
             } else if (pred_index < tmp_index) {
                 decompressed_data = std::get<1>(ebs[pred_index]);
             }
-            if(fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])){
+            auto t1=fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
+                t2=std::get<2>(ebs[tmp_index]),
+                t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+            if( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()){
                 decompressed_data = std::get<1>(ebs[tmp_index]);
-            } else if(fabs(decompressed_data - std::get<0>(ebs[tmp_index]))< std::get<2>(ebs[tmp_index])){
+            } else if(t3<t2&& fabs(t3-t2)>std::numeric_limits<T>::epsilon()){
                 decompressed_data = std::get<0>(ebs[tmp_index]);
             }
         } else if(pred_index > data_index) {
@@ -440,9 +444,12 @@ namespace SZ {
                 decompressed_data = pred+ remaining_quant*(2*std::get<2>(ebs[pred_index]));
                 if(actual_quant+ tmp ==0) {
                     int tmp_index = getErrorBoundIndex(decompressed_data, false);
-                    if (fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                    auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
+                        t2=std::get<2>(ebs[tmp_index]),
+                        t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+                    if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
                         decompressed_data = std::get<1>(ebs[tmp_index]);
-                    } else if (fabs(decompressed_data - std::get<0>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+                    } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
                         decompressed_data = std::get<0>(ebs[tmp_index]);
                     }
                 }
@@ -451,15 +458,18 @@ namespace SZ {
         } else if(actual_quant == 0){
             int tmp_index = pred_index;
             decompressed_data = pred;
-            if (fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+            auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
+                    t2=std::get<2>(ebs[tmp_index]),
+                    t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+            if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
                 decompressed_data = std::get<1>(ebs[tmp_index]);
-            } else if (fabs(decompressed_data - std::get<0>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])) {
+            } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
                 decompressed_data = std::get<0>(ebs[tmp_index]);
             }
             return decompressed_data;
         } else {
             tmp = (int)round((std::get<1>(ebs[pred_index])- pred)/(2*std::get<2>(ebs[pred_index])));
-            if(actual_quant - tmp >= 0 && pred_index<range_size-1) {
+            if(actual_quant - tmp > 0 && pred_index<range_size-1) {
                 remaining_quant -= tmp;
                 for(i=pred_index+1;i<range_size-1;i++){
                     if(remaining_quant - quant_range[i]<=0){
@@ -473,12 +483,15 @@ namespace SZ {
                 return decompressed_data;
             } else {
                 decompressed_data = pred + 2*remaining_quant*std::get<2>(ebs[pred_index]);
-//                int tmp_index = getErrorBoundIndex(decompressed_data, false);
-//                if(fabs(decompressed_data - std::get<1>(ebs[tmp_index])) < std::get<2>(ebs[tmp_index])){
-//                    decompressed_data = std::get<1>(ebs[pred_index]);
-//                } else if(fabs(decompressed_data - std::get<0>(ebs[tmp_index]))< std::get<2>(ebs[tmp_index])){
-//                    decompressed_data = std::get<0>(ebs[pred_index]);
-//                }
+                int tmp_index = getErrorBoundIndex(decompressed_data, false);
+                auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
+                        t2=std::get<2>(ebs[tmp_index]),
+                        t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+                if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
+                    decompressed_data = std::get<1>(ebs[tmp_index]);
+                } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
+                    decompressed_data = std::get<0>(ebs[tmp_index]);
+                }
                 return decompressed_data;
             }
         }
