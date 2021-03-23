@@ -53,10 +53,12 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg use_bitmapArg("m","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
+    TCLAP::ValueArg<std::string> decFilePath("d", "decFile", "The decompressed data file", true, "", "string");
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
 //    cmd.add(dimension);
     cmd.add(valueRange);
+    cmd.add(decFilePath);
     try {
         cmd.parse(argc, argv);
     }catch (TCLAP::ArgException &e) {
@@ -142,6 +144,7 @@ int main(int argc, char **argv) {
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     std::unique_ptr<float[]> dec_data;
     dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign, has_bg));
+    SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
 //    dec_data.reset(sz.decompress(compressed.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
