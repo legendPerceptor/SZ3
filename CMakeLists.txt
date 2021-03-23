@@ -3,16 +3,16 @@ project(SZ)
 #project(First VERSION 3.0.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-O0")
+set(CMAKE_CXX_FLAGS "-O3")
 add_definitions(-DPOLY_REGRESSION_COEF_FOLDER="${CMAKE_CURRENT_SOURCE_DIR}/data/")
 
 message("The Project Source DIR:" ${PROJECT_SOURCE_DIR})
-message("ZSTD_LIBS:" ${ZSTD_LIBS})
+
 
 
 find_library(ZSTD_LIBS zstd HINTS "${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib")
 set(ZSTD_INCLUDES "${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib/install/usr/local/include")
-
+message("ZSTD_LIBS:" ${ZSTD_LIBS})
 message("ZSTD_INCLUDES:" ${ZSTD_INCLUDES})
 
 include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/vendors/tclap-1.4.0-rc1/include)
