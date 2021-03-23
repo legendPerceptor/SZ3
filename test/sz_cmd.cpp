@@ -17,7 +17,7 @@
 #include <chrono>
 #include <tclap/CmdLine.h>
 
-namespace fs = std::filesystem;
+//namespace fs = std::filesystem;
 static void convert(float* data, int num) {
     float t;
     char *bytes;
@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
         exit(10);
     }
     std::string ranges = valueRange.getValue();
-    auto ebs = std::vector<std::tuple<float, float, float>>();
+    auto ebs = std::vector<SZ::RangeTuple<float>>();
     int start = 0;
     int end = ranges.find(';', start);
     float eb_min = 10000;
@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
         std::stringstream ss(cur_rang);
         float low, high, eb;
         ss>>low>>high>>eb;
-        ebs.emplace_back(low, high, eb);
+        ebs.push_back(SZ::RangeTuple(low, high, eb));
         if(eb<eb_min){eb_min=eb;}
         start = end+1;
         end = ranges.find(';', start);
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
 //    }
 
     float eb =eb_min;
-    float low_range = std::get<0>(*ebs.begin()), high_range = std::get<1>(*ebs.end());
+    float low_range = (*ebs.begin()).low, high_range = (*ebs.end()).high;
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();

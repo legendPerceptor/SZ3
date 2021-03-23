@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 //    auto cp = std::make_shared<SZ::ComposedPredictor<float, 3>>(predictors_);
-    auto ebs = std::vector<std::tuple<float, float, float>>();
+    auto ebs = std::vector<SZ::RangeTuple<float>>();
 //    ebs.push_back(std::tuple<float,float,float>(low_range, high_range, eb));
 
     ebs.emplace_back(low_range, -30, eb);

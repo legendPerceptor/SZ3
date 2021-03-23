@@ -12,6 +12,22 @@ namespace SZ {
 
 // data with T type
 // return int
+
+    template<class T>
+    struct RangeTuple {
+        T low, high, eb;
+        RangeTuple(T low, T high, T eb):low(low), high(high), eb(eb){}
+        RangeTuple():low(0), high(0), eb(0){}
+    };
+
+    template<class T, class Q>
+    struct tuple2{
+        T a;
+        Q b;
+        tuple2(T a, Q b):a(a), b(b) {}
+        tuple2():a(0),b(0){}
+    };
+
     template<class T>
     class PredictionBasedQuantizer : public concepts::QuantizerInterface<T> {
     protected:
@@ -199,14 +215,14 @@ namespace SZ {
     template<class T>
     class MultipleErrorBoundsQuantizer : public concepts::QuantizerInterface<T>  {
     public:
-        MultipleErrorBoundsQuantizer(std::vector<std::tuple<T,T,T>> eb, int r = 32768):ebs(eb), radius(r){
+        MultipleErrorBoundsQuantizer(std::vector<RangeTuple<T>> eb, int r = 32768):ebs(eb), radius(r){
             init();
         }
         void init(){
             for(int i=0;i<ebs.size();i++){
-                T low = std::get<0>(ebs[i]);
-                T high = std::get<1>(ebs[i]);
-                T eb_cur = std::get<2>(ebs[i]);
+                T low = ebs[i].low;
+                T high = ebs[i].high;
+                T eb_cur = ebs[i].eb;
                 T tmp = (high-low)/(2*eb_cur);
                 int quant_num;
                 if(tmp> floor(tmp)){
@@ -215,7 +231,8 @@ namespace SZ {
                     quant_num = (int)floor(tmp);
                 }
 //                quant_num = (int)round(tmp);
-                std::get<2>(ebs[i]) = (high-low)/(2*quant_num);
+//                std::get<2>(ebs[i]) = (high-low)/(2*quant_num);
+                ebs[i].eb = (high-low)/(2*quant_num);
                 quant_range.push_back(quant_num);
             }
             range_size = ebs.size();
@@ -236,7 +253,7 @@ namespace SZ {
 
         // quantize the data with a prediction value, and returns the quantization index
         int quantize(T data, T pred);
-        std::tuple<T, int> quantize_actual(T data, T pred);
+        tuple2<T,int> quantize_actual(T data, T pred);
         // quantize the data with a prediction value, and returns the quantization index and the decompressed data
         // int quantize(T data, T pred, T& dec_data);
         int quantize_and_overwrite(T &data, T pred);
@@ -252,11 +269,11 @@ namespace SZ {
             *reinterpret_cast<int *>(c) = ebs.size();
             c += sizeof(int);
             for(int i=0;i<ebs.size();i++){
-                *reinterpret_cast<T *>(c) = std::get<0>(ebs[i]);
+                *reinterpret_cast<T *>(c) = ebs[i].low;
                 c += sizeof(T);
-                *reinterpret_cast<T *>(c) = std::get<1>(ebs[i]);
+                *reinterpret_cast<T *>(c) = ebs[i].high;
                 c += sizeof(T);
-                *reinterpret_cast<T *>(c) = std::get<2>(ebs[i]);
+                *reinterpret_cast<T *>(c) = ebs[i].eb;
                 c += sizeof(T);
             }
             *reinterpret_cast<int *>(c) = this->radius;
@@ -273,7 +290,7 @@ namespace SZ {
             remaining_length -= sizeof(uint8_t);
             int size = *reinterpret_cast<const int *>(c);
             c += sizeof(int);
-            ebs = std::vector<std::tuple<T,T,T>>(size);
+            ebs = std::vector<RangeTuple<T>>(size);
             for(int i=0;i<size;i++){
                 T low, high, eb;
                 low = *reinterpret_cast<const T *>(c);
@@ -282,7 +299,7 @@ namespace SZ {
                 c += sizeof(T);
                 eb = *reinterpret_cast<const T *>(c);
                 c += sizeof(T);
-                ebs[i] = std::tuple<T,T,T>(low, high, eb);
+                ebs[i] = RangeTuple(low, high, eb);
             }
 //            this->error_bound = *reinterpret_cast<const T *>(c);
 //            this->error_bound_reciprocal = 1.0 / this->error_bound;
@@ -308,16 +325,16 @@ namespace SZ {
         std::vector<T> unpred;
         std::vector<int> quant_range;
         size_t index = 0; // used in decompression only
-        std::vector<std::tuple<T,T,T>> ebs;
+        std::vector<RangeTuple<T>> ebs;
         int radius;
         int last_pred_range, last_data_range;
         int range_size;
 
         int getErrorBoundIndex(const T& data, bool change_last){
             int cur_range;
-            if(data< std::get<1>(ebs[0])){
+            if(data< ebs[0].high){
                 cur_range = 0;
-            } else if(data>= std::get<0>(ebs[ebs.size()-1])) {
+            } else if(data>= ebs[ebs.size()-1].low) {
                 cur_range = range_size - 1;
             } else {
                 if (last_data_range > 0) {
@@ -325,12 +342,12 @@ namespace SZ {
                 } else {
                     cur_range = 0;
                 }
-                if (std::get<0>(ebs[cur_range]) <= data) {
-                    while (data >= std::get<1>(ebs[cur_range]) && cur_range < range_size - 1) {
+                if (ebs[cur_range].low <= data) {
+                    while (data >= ebs[cur_range].high && cur_range < range_size - 1) {
                         cur_range++;
                     }
                 } else {
-                    while (data < std::get<0>(ebs[cur_range]) && cur_range > 0) {
+                    while (data < ebs[cur_range].low && cur_range > 0) {
                         cur_range--;
                     }
                 }
@@ -344,7 +361,7 @@ namespace SZ {
     };
 
     template<class T>
-    std::tuple<T, int> MultipleErrorBoundsQuantizer<T>::quantize_actual(T data, T pred) {
+    tuple2<T, int> MultipleErrorBoundsQuantizer<T>::quantize_actual(T data, T pred) {
         // The function returns 0,1 or unshifted quantization value
         T diff = data - pred;
         int data_index = getErrorBoundIndex(data, true);
@@ -354,66 +371,66 @@ namespace SZ {
         int tmp;
 //        assert(pred_index == data_index);
         if(pred_index == data_index){
-            T error_bound = std::get<2>(ebs[data_index]);
+            T error_bound = ebs[data_index].eb;
             T error_bound_reciprocal = 1/error_bound;
             int quant = (int)round(diff *(error_bound_reciprocal*0.5));
             quant_index_shifted = this->radius + quant;
             decompressed_data = pred + quant* 2 * error_bound;
             int tmp_index = getErrorBoundIndex(decompressed_data, false);
             if(pred_index > tmp_index ){
-                decompressed_data = std::get<0>(ebs[pred_index]);
+                decompressed_data = ebs[pred_index].low;
             } else if (pred_index < tmp_index) {
-                decompressed_data = std::get<1>(ebs[pred_index]);
+                decompressed_data = ebs[pred_index].high;
             }
-            auto t1=fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
-                t2=std::get<2>(ebs[tmp_index]),
-                t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+            auto t1=fabs(decompressed_data - ebs[tmp_index].high),
+                t2=ebs[tmp_index].eb,
+                t3=fabs(decompressed_data - ebs[tmp_index].low);
             if( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()){
-                decompressed_data = std::get<1>(ebs[tmp_index]);
+                decompressed_data = ebs[tmp_index].high;
             } else if(t3<t2&& fabs(t3-t2)>std::numeric_limits<T>::epsilon()){
-                decompressed_data = std::get<0>(ebs[tmp_index]);
+                decompressed_data = ebs[tmp_index].low;
             }
         } else if(pred_index > data_index) {
             int quant_value = 0;
-            quant_value -= (int)round((pred - std::get<0>(ebs[pred_index]))/(2*std::get<2>(ebs[pred_index])));
+            quant_value -= (int)round((pred - ebs[pred_index].low)/(2*ebs[pred_index].eb));
             for(int i=pred_index-1; i>=data_index+1;i--){
                 quant_value -= quant_range[i];
             }
-            tmp = (int)round((std::get<1>(ebs[data_index])-data)/(2*std::get<2>(ebs[data_index])));
-            decompressed_data = std::get<1>(ebs[data_index]) - tmp * (2*std::get<2>(ebs[data_index]));
+            tmp = (int)round((ebs[data_index].high-data)/(2*ebs[data_index].eb));
+            decompressed_data = ebs[data_index].high - tmp * (2*ebs[data_index].eb);
             quant_value -= tmp;
             quant_index_shifted = this->radius + quant_value;
         } else if(pred_index < data_index) {
             int quant_value = 0;
-            quant_value += (int)round((std::get<1>(ebs[pred_index]) - pred)/(2*std::get<2>(ebs[pred_index])));
+            quant_value += (int)round((ebs[pred_index].high - pred)/(2*ebs[pred_index].eb));
             for(int i=pred_index+1; i<=data_index-1;i++){
                 quant_value += quant_range[i];
             }
-            tmp = (int)round((data - std::get<0>(ebs[data_index]))/(2*std::get<2>(ebs[data_index])));
-            decompressed_data = std::get<0>(ebs[data_index]) + tmp * (2*std::get<2>(ebs[data_index]));
+            tmp = (int)round((data - ebs[data_index].low)/(2*ebs[data_index].eb));
+            decompressed_data = ebs[data_index].low + tmp * (2*ebs[data_index].eb);
             quant_value += tmp;
             quant_index_shifted = this->radius + quant_value;
         }
 
-        if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > std::get<2>(ebs[data_index])) {
+        if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > ebs[data_index].eb) {
             // Handle Unpredictable data
             unpred.push_back(data);
-            return std::tuple<T, int>(data, 0); // 0 denotes unpredictable data
+            return tuple2<T, int>(data, 0); // 0 denotes unpredictable data
         }
-        return std::tuple<T, int>(decompressed_data, quant_index_shifted);
+        return tuple2<T, int>(decompressed_data, quant_index_shifted);
     }
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize(T data, T pred){
         auto t = quantize_actual(data, pred);
-        return std::get<1>(t);
+        return t.b;
     }
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
         auto t = quantize_actual(data, pred);
-        data = std::get<0>(t);
-        return std::get<1>(t);
+        data = t.a;
+        return t.b;
     }
 
     template<class T>
@@ -427,30 +444,30 @@ namespace SZ {
         int tmp;
         T decompressed_data = pred;
         if(actual_quant<0){
-            tmp = (int)round((pred - std::get<0>(ebs[pred_index]))/(2*std::get<2>(ebs[pred_index])));
+            tmp = (int)round((pred - ebs[pred_index].low)/(2*ebs[pred_index].eb));
             if(actual_quant + tmp < 0 && pred_index>0){
                 remaining_quant += tmp;
                 for(i=pred_index-1;i>0;i--){
                     if(remaining_quant+quant_range[i]>=0){
-                        decompressed_data = std::get<1>(ebs[i]) + remaining_quant*(2*std::get<2>(ebs[i]));
+                        decompressed_data = ebs[i].high + remaining_quant*(2*ebs[i].eb);
                         return decompressed_data;
                     }
                     remaining_quant+=quant_range[i];
                 }
                 // i = 0
-                decompressed_data = std::get<1>(ebs[0]) + remaining_quant*(2*std::get<2>(ebs[0]));
+                decompressed_data = ebs[0].high + remaining_quant*(2*ebs[0].eb);
                 return decompressed_data;
             } else {
-                decompressed_data = pred+ remaining_quant*(2*std::get<2>(ebs[pred_index]));
+                decompressed_data = pred+ remaining_quant*(2*ebs[pred_index].eb);
                 if(actual_quant+ tmp ==0) {
                     int tmp_index = getErrorBoundIndex(decompressed_data, false);
-                    auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
-                        t2=std::get<2>(ebs[tmp_index]),
-                        t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+                    auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                        t2=ebs[tmp_index].eb,
+                        t3=fabs(decompressed_data - ebs[tmp_index].low);
                     if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
-                        decompressed_data = std::get<1>(ebs[tmp_index]);
+                        decompressed_data = ebs[tmp_index].high;
                     } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
-                        decompressed_data = std::get<0>(ebs[tmp_index]);
+                        decompressed_data = ebs[tmp_index].low;
                     }
                 }
                 return decompressed_data;
@@ -458,39 +475,39 @@ namespace SZ {
         } else if(actual_quant == 0){
             int tmp_index = pred_index;
             decompressed_data = pred;
-            auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
-                    t2=std::get<2>(ebs[tmp_index]),
-                    t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+            auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                    t2=ebs[tmp_index].eb,
+                    t3=fabs(decompressed_data -ebs[tmp_index].low);
             if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
-                decompressed_data = std::get<1>(ebs[tmp_index]);
+                decompressed_data = ebs[tmp_index].high;
             } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
-                decompressed_data = std::get<0>(ebs[tmp_index]);
+                decompressed_data = ebs[tmp_index].low;
             }
             return decompressed_data;
         } else {
-            tmp = (int)round((std::get<1>(ebs[pred_index])- pred)/(2*std::get<2>(ebs[pred_index])));
+            tmp = (int)round((ebs[pred_index].high- pred)/(2*ebs[pred_index].eb));
             if(actual_quant - tmp > 0 && pred_index<range_size-1) {
                 remaining_quant -= tmp;
                 for(i=pred_index+1;i<range_size-1;i++){
                     if(remaining_quant - quant_range[i]<=0){
-                        decompressed_data = std::get<0>(ebs[i]) + 2*remaining_quant*std::get<2>(ebs[i]);
+                        decompressed_data = ebs[i].low + 2*remaining_quant*ebs[i].eb;
                         return decompressed_data;
                     }
                     remaining_quant -=quant_range[i];
                 }
                 // i = range_size -1
-                decompressed_data = std::get<0>(ebs[range_size -1]) + 2*remaining_quant*std::get<2>(ebs[range_size -1]);
+                decompressed_data = ebs[range_size -1].low + 2*remaining_quant*ebs[range_size -1].eb;
                 return decompressed_data;
             } else {
-                decompressed_data = pred + 2*remaining_quant*std::get<2>(ebs[pred_index]);
+                decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
                 int tmp_index = getErrorBoundIndex(decompressed_data, false);
-                auto t1 = fabs(decompressed_data - std::get<1>(ebs[tmp_index])),
-                        t2=std::get<2>(ebs[tmp_index]),
-                        t3=fabs(decompressed_data - std::get<0>(ebs[tmp_index]));
+                auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                        t2=ebs[tmp_index].eb,
+                        t3=fabs(decompressed_data -ebs[tmp_index].low);
                 if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
-                    decompressed_data = std::get<1>(ebs[tmp_index]);
+                    decompressed_data = ebs[tmp_index].high;
                 } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
-                    decompressed_data = std::get<0>(ebs[tmp_index]);
+                    decompressed_data = ebs[tmp_index].low;
                 }
                 return decompressed_data;
             }
