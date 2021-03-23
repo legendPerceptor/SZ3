@@ -16,6 +16,7 @@
 #include <memory>
 #include <chrono>
 #include <tclap/CmdLine.h>
+#include <fstream>
 
 //namespace fs = std::filesystem;
 static void convert(float* data, int num) {
@@ -54,11 +55,13 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
     TCLAP::ValueArg<std::string> decFilePath("d", "decFile", "The decompressed data file", true, "", "string");
+    TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
 //    cmd.add(dimension);
     cmd.add(valueRange);
     cmd.add(decFilePath);
+    cmd.add(logFilePath);
     try {
         cmd.parse(argc, argv);
     }catch (TCLAP::ArgException &e) {
@@ -81,6 +84,7 @@ int main(int argc, char **argv) {
         end = ranges.find(';', start);
     }
     std::string inputFileStr = inputFilePath.getValue();
+    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
     size_t num = 0;
     auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
     std::cout << "Read " << num << " elements\n";
@@ -139,6 +143,8 @@ int main(int argc, char **argv) {
     std::cout << "Compressed size = " << compressed_size << std::endl;
     std::cout << "Compression Ratio = " << num * sizeof (float)/ (float)compressed_size << std::endl;
     SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
+    fs << outputFilePath.getValue() <<" Compression Time: " <<double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s;"
+        << "Compression size: " << compressed_size <<"; Compression ratio: "<<num * sizeof (float)/ (float)compressed_size<<"; ";
 
     startTime = std::chrono::system_clock::now();
 //    err = clock_gettime(CLOCK_REALTIME, &start);
@@ -152,6 +158,7 @@ int main(int argc, char **argv) {
               //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
               << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
               << std::endl;
+    fs<<"Decompression Time: "<< double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s; ";
 //    printData(dec_data.get());
     auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
     if(bigEndian.getValue()) {
@@ -166,5 +173,7 @@ int main(int argc, char **argv) {
         }
     }
     std::cout << "Max error = " << max_err << std::endl;
+    fs<<"Max error = " << max_err << std::endl;
+    fs.close();
     return 0;
 }
