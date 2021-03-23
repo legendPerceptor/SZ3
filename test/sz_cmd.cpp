@@ -14,9 +14,7 @@
 #include <iostream>
 #include <cmath>
 #include <memory>
-#include <type_traits>
 #include <chrono>
-#include <filesystem>
 #include <tclap/CmdLine.h>
 
 namespace fs = std::filesystem;

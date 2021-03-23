@@ -19,7 +19,7 @@ include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SO
 link_directories(${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib)
 
 set(HEADER_FILES
-        include/compressor/compressor.hpp
+        include/compressor/Compressor.hpp
         include/compressor/SZ_General_Compressor.hpp
         include/encoder/Encoder.hpp
         include/encoder/HuffmanEncoder.hpp
