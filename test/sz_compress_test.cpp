@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     startTime = std::chrono::system_clock::now();
     std::unique_ptr<unsigned char[]> compressed;
-    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign));
+    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign,true));
 //    compressed.reset(sz.compress(data.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     startTime = std::chrono::system_clock::now();
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     std::unique_ptr<float[]> dec_data;
-    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign));
+    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign, true));
 //    dec_data.reset(sz.decompress(compressed.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();

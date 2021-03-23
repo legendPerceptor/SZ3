@@ -15,7 +15,7 @@ set(ZSTD_INCLUDES "${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib/install/usr/local/
 
 message("ZSTD_INCLUDES:" ${ZSTD_INCLUDES})
 
-include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include)
+include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/vendors/tclap-1.4.0-rc1/include)
 link_directories(${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib)
 
 set(HEADER_FILES

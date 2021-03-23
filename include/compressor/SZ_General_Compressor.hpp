@@ -36,7 +36,7 @@ namespace SZ {
             static_assert(std::is_base_of_v<concepts::LosslessInterface, Lossless>, "must implement the lossless interface");
         }
 
-        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false) {
+        uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false, bool has_bg=false) {
             auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
                                                                                          std::begin(global_dimensions),
                                                                                          std::end(global_dimensions),
@@ -47,37 +47,41 @@ namespace SZ {
                                                                                          0);
 
             std::vector<int> quant_inds(num_elements);
-            std::vector<int> bitmap(num_elements);
-            std::vector<int> signs(num_elements);
-//            unsigned char** result;
-//            if(use_bitmap) {
-//                bitmap = new int[num_elements];
-//                memset(bitmap, 0, sizeof (int)*num_elements);
-//            }
-            T tmp;
-            for (auto element = intra_block_range->begin(); element != intra_block_range->end(); ++element) {
-                if (*element == bg_data) {
-                    if(use_bitmap){
-                        bitmap[element.get_offset()] = 1;
-                    } else{
-                        quant_inds[element.get_offset()] = 2 * quantizer.get_radius() + 1;
-                    }
-                    tmp = my_lorenzo.predict(element);
-                    if(tmp >= low_range && tmp <= high_range){
-                        *element = tmp;
-                    } else {
-//                        tmp = (low_range + high_range)/2;
-                        tmp = 0;
-                        *element = tmp;
-                    }
+            std::vector<int> bitmap;
+            std::vector<int> signs;
+            if(has_bg) {
+                if (preserve_sign) {
+                    signs.resize(num_elements);
                 }
-                if(preserve_sign){
-                    if(*element>0) {
-                        signs[element.get_offset()] = 1;
-                    }else if(*element==0) {
-                        signs[element.get_offset()] = 0;
-                    }else if(*element<0) {
-                        signs[element.get_offset()] = 2;
+                if (use_bitmap) {
+                    bitmap.resize(num_elements);
+                }
+
+                T tmp;
+                for (auto element = intra_block_range->begin(); element != intra_block_range->end(); ++element) {
+                    if (*element == bg_data) {
+                        if (use_bitmap) {
+                            bitmap[element.get_offset()] = 1;
+                        } else {
+                            quant_inds[element.get_offset()] = 2 * quantizer.get_radius() + 1;
+                        }
+                        tmp = my_lorenzo.predict(element);
+                        if (tmp >= low_range && tmp <= high_range) {
+                            *element = tmp;
+                        } else {
+//                        tmp = (low_range + high_range)/2;
+                            tmp = 0;
+                            *element = tmp;
+                        }
+                    }
+                    if (preserve_sign) {
+                        if (*element > 0) {
+                            signs[element.get_offset()] = 1;
+                        } else if (*element == 0) {
+                            signs[element.get_offset()] = 0;
+                        } else if (*element < 0) {
+                            signs[element.get_offset()] = 2;
+                        }
                     }
                 }
             }
@@ -189,7 +193,7 @@ namespace SZ {
             return lossless_data;
         }
 
-        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false) {
+        T *decompress_withBG(uchar const *lossless_compressed_data, const size_t length, T bg, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false,bool has_bg=false) {
             size_t remaining_length = length;
             auto compressed_data = lossless.decompress(lossless_compressed_data, remaining_length);
             uchar const *compressed_data_pos = compressed_data;
@@ -283,32 +287,33 @@ namespace SZ {
                     }
                 }
             }
-            auto intra_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(dec_data.get(),
-                                                                                   std::begin(global_dimensions),
-                                                                                   std::end(global_dimensions), 1,
-                                                                                   0);
-            for(auto element = intra_range->begin(); element!=intra_range->end(); element++){
-                int index = element.get_offset();
-                bool isBG = false;
-                if(use_bitmap){
-                    if(bitmap[index]==1){
+            if(has_bg) {
+                auto intra_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(dec_data.get(),
+                                                                                       std::begin(global_dimensions),
+                                                                                       std::end(global_dimensions), 1,
+                                                                                       0);
+                for (auto element = intra_range->begin(); element != intra_range->end(); element++) {
+                    int index = element.get_offset();
+                    bool isBG = false;
+                    if (use_bitmap) {
+                        if (bitmap[index] == 1) {
+                            *element = bg;
+                            isBG = true;
+                        }
+                    } else if (quant_inds[index] == 2 * quantizer.get_radius() + 1) {
                         *element = bg;
                         isBG = true;
                     }
-                } else if(quant_inds[index] == 2* quantizer.get_radius()+1){
-                    *element = bg;
-                    isBG = true;
-                }
-                if(preserve_sign && !isBG){
-                    if(signs[index]==0){
-                        *element = 0;
-                    }
-                    if((*element>0 && signs[index]==2)||(*element<0 && signs[index==1])){
-                        *element = -*element;
+                    if (preserve_sign && !isBG) {
+                        if (signs[index] == 0) {
+                            *element = 0;
+                        }
+                        if ((*element > 0 && signs[index] == 2) || (*element < 0 && signs[index == 1])) {
+                            *element = -*element;
+                        }
                     }
                 }
             }
-
             predictor.postdecompress_data(inter_block_range->begin());
             quantizer.postdecompress_data();
             return dec_data.release();
