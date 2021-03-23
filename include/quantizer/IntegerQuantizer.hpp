@@ -464,9 +464,9 @@ namespace SZ {
                     auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
                         t2=ebs[tmp_index].eb,
                         t3=fabs(decompressed_data - ebs[tmp_index].low);
-                    if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
+                    if ( t1< 1.5*t2) {
                         decompressed_data = ebs[tmp_index].high;
-                    } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
+                    } else if (t3 < 1.5*t2) {
                         decompressed_data = ebs[tmp_index].low;
                     }
                 }
@@ -500,14 +500,16 @@ namespace SZ {
                 return decompressed_data;
             } else {
                 decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
-                int tmp_index = getErrorBoundIndex(pred, false);
-                auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                        t2=ebs[tmp_index].eb,
-                        t3=fabs(decompressed_data -ebs[tmp_index].low);
-                if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
-                    decompressed_data = ebs[tmp_index].high;
-                } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
-                    decompressed_data = ebs[tmp_index].low;
+                if(actual_quant- tmp ==0) {
+                    int tmp_index = getErrorBoundIndex(pred, false);
+                    auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                            t2 = ebs[tmp_index].eb,
+                            t3 = fabs(decompressed_data - ebs[tmp_index].low);
+                    if (t1 < 1.5 * t2) {
+                        decompressed_data = ebs[tmp_index].high;
+                    } else if (t3 < 1.5 * t2) {
+                        decompressed_data = ebs[tmp_index].low;
+                    }
                 }
                 return decompressed_data;
             }

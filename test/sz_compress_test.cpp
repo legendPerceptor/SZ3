@@ -98,10 +98,10 @@ int main(int argc, char **argv) {
             SZ::Lossless_zstd()
     );
 
-//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//    float dp= data[9098138];
-//    quantizer.quantize_and_overwrite(dp, 39.5);
-//    printf("tests!!!!!!");
+    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+    float dp= data[33726978];
+    quantizer.recover(111.66, -16+32768);
+    printf("tests!!!!!!");
 //    exit(1);
     size_t compressed_size = 0;
     // Change to use Cpp-style timer
