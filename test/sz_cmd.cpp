@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
     TCLAP::ValueArg<std::string> decFilePath("d", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
+    TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
 //    cmd.add(dimension);
@@ -73,6 +74,7 @@ int main(int argc, char **argv) {
     int start = 0;
     int end = ranges.find(';', start);
     float eb_min = 10000;
+    bool fallback = fall_back.getValue();
     while(end!=-1){
         std::string cur_rang = ranges.substr(start, end-start);
         std::stringstream ss(cur_rang);
@@ -92,6 +94,12 @@ int main(int argc, char **argv) {
     if(bigEndian.getValue()) { // convert big endian data
         convert(data.get(), num);
     }
+//    std::cout<<"special: "<< data[2242053]<<std::endl;
+//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//    float dp= data[2242053];
+//    quantizer.quantize_and_overwrite(dp, 86.8644);
+//    printf("tests!!!!!!");
+//    exit(1);
 //    auto dimensions = dimension.getValue();
 //    size_t num_d=1;
 //    for(auto iter=dimensions.begin();iter!=dimensions.end();iter++){
@@ -125,6 +133,14 @@ int main(int argc, char **argv) {
             SZ::HuffmanEncoder<int>(),
             SZ::Lossless_zstd()
     );
+    auto sz_old = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+            conf,
+            SZ::ComposedPredictor<float, DIM>(predictors_),
+            SZ::LinearQuantizer<float>(eb),
+//            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+            SZ::HuffmanEncoder<int>(),
+            SZ::Lossless_zstd()
+    );
     size_t compressed_size = 0;
     // Change to use Cpp-style timer
     // struct timespec start, end;
@@ -133,8 +149,15 @@ int main(int argc, char **argv) {
 
     startTime = std::chrono::system_clock::now();
     std::unique_ptr<unsigned char[]> compressed;
-    compressed.reset(sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign, has_bg));
-//    compressed.reset(sz.compress(data.get(), compressed_size));
+    if(fallback) {
+        compressed.reset(sz_old.compress(data.get(), compressed_size));
+    } else if(!has_bg){
+        compressed.reset(sz.compress(data.get(), compressed_size));
+    }else {
+        compressed.reset(
+                sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign,
+                                   false));
+    }
     endTime = std::chrono::system_clock::now();
     std::cout << "Compression time: "
               //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
@@ -149,9 +172,15 @@ int main(int argc, char **argv) {
     startTime = std::chrono::system_clock::now();
 //    err = clock_gettime(CLOCK_REALTIME, &start);
     std::unique_ptr<float[]> dec_data;
-    dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign, has_bg));
+    if(fallback){
+        dec_data.reset(sz_old.decompress(compressed.get(), compressed_size));
+    }else if(!has_bg){
+        dec_data.reset(sz.decompress(compressed.get(), compressed_size));
+    }else {
+        dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
+                                            preserve_sign, false));
+    }
     SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
-//    dec_data.reset(sz.decompress(compressed.get(), compressed_size));
 //    err = clock_gettime(CLOCK_REALTIME, &end);
     endTime = std::chrono::system_clock::now();
     std::cout << "Decompression time: "

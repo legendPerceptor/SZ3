@@ -125,7 +125,7 @@ namespace SZ {
                     auto intra_end = intra_block_range->end();
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
-                        if (!use_bitmap && quant_inds[offset] == 2 * quantizer.get_radius() + 1) {
+                        if (has_bg && !use_bitmap && quant_inds[offset] == 2 * quantizer.get_radius() + 1) {
                             *element = predictor_withfallback->predict(element);
                         } else {
                             T pred = predictor_withfallback->predict(element);
@@ -163,7 +163,7 @@ namespace SZ {
             predictor.save(compressed_data_pos);
             quantizer.save(compressed_data_pos);
 
-            if(use_bitmap) {
+            if(has_bg && use_bitmap) {
                 HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
                 bitmap_encoder.preprocess_encode(bitmap,
                                                  2);
@@ -181,7 +181,7 @@ namespace SZ {
                 signs_encoder.postprocess_encode();
             }
 
-            encoder.preprocess_encode(quant_inds, 2 * quantizer.get_radius() + 2);
+            encoder.preprocess_encode(quant_inds, 2 * quantizer.get_radius()+2);
             encoder.save(compressed_data_pos);
             encoder.encode(quant_inds, compressed_data_pos);
             encoder.postprocess_encode();
@@ -210,7 +210,7 @@ namespace SZ {
             quantizer.load(compressed_data_pos, remaining_length);
             std::vector<int> bitmap;
             std::vector<int> signs;
-            if(use_bitmap) {
+            if(has_bg && use_bitmap) {
                 HuffmanEncoder<int> bitmap_encoder = HuffmanEncoder<int>();
                 bitmap_encoder.load(compressed_data_pos, remaining_length);
                 bitmap = bitmap_encoder.decode(compressed_data_pos, num_elements);

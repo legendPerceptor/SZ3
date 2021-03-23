@@ -224,15 +224,15 @@ namespace SZ {
                 T high = ebs[i].high;
                 T eb_cur = ebs[i].eb;
                 T tmp = (high-low)/(2*eb_cur);
-                int quant_num;
-                if(tmp> floor(tmp)){
-                    quant_num = (int)floor(tmp)+1;
-                }else{
-                    quant_num = (int)floor(tmp);
-                }
+                int quant_num=round(tmp);
+//                if(tmp> floor(tmp)){
+//                    quant_num = (int)floor(tmp)+1;
+//                }else{
+//                    quant_num = (int)floor(tmp);
+//                }
 //                quant_num = (int)round(tmp);
 //                std::get<2>(ebs[i]) = (high-low)/(2*quant_num);
-                ebs[i].eb = (high-low)/(2*quant_num);
+//                ebs[i].eb = (high-low)/(2*quant_num);
                 quant_range.push_back(quant_num);
             }
             range_size = ebs.size();
@@ -460,7 +460,7 @@ namespace SZ {
             } else {
                 decompressed_data = pred+ remaining_quant*(2*ebs[pred_index].eb);
                 if(actual_quant+ tmp ==0) {
-                    int tmp_index = getErrorBoundIndex(decompressed_data, false);
+                    int tmp_index = getErrorBoundIndex(pred, false);
                     auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
                         t2=ebs[tmp_index].eb,
                         t3=fabs(decompressed_data - ebs[tmp_index].low);
@@ -500,7 +500,7 @@ namespace SZ {
                 return decompressed_data;
             } else {
                 decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
-                int tmp_index = getErrorBoundIndex(decompressed_data, false);
+                int tmp_index = getErrorBoundIndex(pred, false);
                 auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
                         t2=ebs[tmp_index].eb,
                         t3=fabs(decompressed_data -ebs[tmp_index].low);
