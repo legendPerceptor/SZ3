@@ -27,7 +27,7 @@ namespace SZ {
 
     template<typename T, class Predictor, uint N>
     float SZ_Compress(std::unique_ptr<T[]> const &data,
-                      const Config<T, N> &conf,
+                      const Config<T> &conf,
                       Predictor predictor) {
 
         std::cout << "****************** Options ********************" << std::endl;

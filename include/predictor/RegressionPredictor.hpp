@@ -13,25 +13,25 @@
 namespace SZ {
 
 // N-d regression predictor
-    template<class T, uint N>
-    class RegressionPredictor : public concepts::PredictorInterface<T, N> {
+    template<class T>
+    class RegressionPredictor : public concepts::PredictorInterface<T> {
     public:
         static const uint8_t predictor_id = 0b00000010;
+        size_t N;
+        RegressionPredictor(size_t N) : quantizer_independent(0), quantizer_liner(0), prev_coeffs(std::vector<T>(N+1)), current_coeffs(std::vector<T>(N+1)), N(N) {}
 
-        RegressionPredictor() : quantizer_independent(0), quantizer_liner(0), prev_coeffs{0}, current_coeffs{0} {}
-
-        RegressionPredictor(uint block_size, T eb) : quantizer_independent(eb / (N + 1)),
+        RegressionPredictor(uint block_size, T eb, size_t N) : quantizer_independent(eb / (N + 1)),
                                                      quantizer_liner(eb / (N + 1) / block_size),
-                                                     prev_coeffs{0}, current_coeffs{0} {
+                                                     prev_coeffs(std::vector<T>(N+1)), current_coeffs(std::vector<T>(N+1)), N(N) {
         }
 
-        RegressionPredictor(uint block_size, T eb1, T eb2) : quantizer_independent(eb1),
+        RegressionPredictor(uint block_size, T eb1, T eb2, size_t N) : quantizer_independent(eb1),
                                                              quantizer_liner(eb2),
-                                                             prev_coeffs{0}, current_coeffs{0} {
+                                                             prev_coeffs(std::vector<T>(N+1)), current_coeffs(std::vector<T>(N+1)),N(N) {
         }
 
-        using Range = multi_dimensional_range<T, N>;
-        using iterator = typename multi_dimensional_range<T, N>::iterator;
+        using Range = multi_dimensional_range<T>;
+        using iterator = typename multi_dimensional_range<T>::iterator;
 
         void precompress_data(const iterator &) const noexcept {}
 
@@ -57,7 +57,7 @@ namespace SZ {
             }
 
             T num_elements_recip = 1.0 / num_elements;
-            std::array<double, N + 1> sum{0};
+            std::vector<double> sum(N+1);
 
             {
                 auto range_begin = range->begin();
@@ -180,38 +180,8 @@ namespace SZ {
         LinearQuantizer<T> quantizer_liner, quantizer_independent;
         std::vector<int> regression_coeff_quant_inds;
         size_t regression_coeff_index = 0;
-        std::array<T, N + 1> current_coeffs;
-        std::array<T, N + 1> prev_coeffs;
-
-//        template<uint NN = N>
-//        inline typename std::enable_if<NN == 3, std::array<double, N + 1>>::type
-//        compute_regression_coefficients(const std::shared_ptr<Range> &range) const {
-//            auto dims = range->get_dimensions();
-//            std::array<double, N + 1> sum{0};
-//
-//            auto range_begin = range->begin();
-//            auto range_end = range->end();
-//            auto iter = range_begin;
-//            for (int t0 = 0; t0 < dims[0]; t0++) {
-//                double sum_cumulative_0 = 0;
-//                for (int t1 = 0; t1 < dims[1]; t1++) {
-//                    double sum_cumulative_1 = 0;
-//                    for (int t2 = 0; t2 < dims[2]; t2++) {
-//                        T data = *iter;
-//                        sum_cumulative_1 += data;
-//                        sum[N - 1] += t2 * data;
-//                        iter.move();
-//                    }
-//                    sum[1] += sum_cumulative_1 * t1;
-//                    sum_cumulative_0 += sum_cumulative_1;
-//                    ++iter;
-//                }
-//                sum[0] += sum_cumulative_0 * t0;
-//                sum[N] += sum_cumulative_0;
-//            }
-//            return sum;
-//        }
-
+        std::vector<T> current_coeffs;
+        std::vector<T> prev_coeffs;
 
         void pred_and_quantize_coefficients() {
             for (int i = 0; i < N; i++) {
@@ -228,9 +198,6 @@ namespace SZ {
             }
             current_coeffs[N] = quantizer_independent.recover(current_coeffs[N],
                                                               regression_coeff_quant_inds[regression_coeff_index++]);
-//            for (auto &coeffs : current_coeffs) {
-//                coeffs = quantizer.recover(coeffs, regression_coeff_quant_inds[regression_coeff_index++]);
-//            }
         }
     };
 

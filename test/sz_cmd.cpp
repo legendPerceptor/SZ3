@@ -43,12 +43,13 @@ static void printData(float* data) {
     }
 }
 
+
 int main(int argc, char **argv) {
 
     TCLAP::CmdLine cmd("SZ3 Compress/Decompress tests", ' ', "0.1");
     TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",true,"","string");
     TCLAP::ValueArg<std::string> outputFilePath("o", "output", "The compressed data output file path", true, "", "string");
-//    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
+    TCLAP::ValueArg<std::string> dimension("n", "dimension", "the dimension of data",true,"","multiInt");
     TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
     TCLAP::SwitchArg use_bitmapArg("m","bitmap","Whether to use the bitmap", cmd, false);
@@ -63,6 +64,7 @@ int main(int argc, char **argv) {
     cmd.add(valueRange);
     cmd.add(decFilePath);
     cmd.add(logFilePath);
+    cmd.add(dimension);
     try {
         cmd.parse(argc, argv);
     }catch (TCLAP::ArgException &e) {
@@ -95,7 +97,7 @@ int main(int argc, char **argv) {
         convert(data.get(), num);
     }
 
-    std::cout<<"special: "<< data[33726978]<<std::endl;
+//    std::cout<<"special: "<< data[33726978]<<std::endl;
 //    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
 //    float dp= data[33726978];
 //    quantizer.recover(111.66, -8+32768);
@@ -103,16 +105,22 @@ int main(int argc, char **argv) {
 //    quantizer.quantize_and_overwrite(dp, 86.8644);
 //    printf("tests!!!!!!");
 //    exit(1);
-//    auto dimensions = dimension.getValue();
-//    size_t num_d=1;
-//    for(auto iter=dimensions.begin();iter!=dimensions.end();iter++){
-//        num_d*=(*iter);
-//    }
-//    if(num_d!=num) {
-//        std::cerr<<"error: "<<"dimension doesn't match! "<<"Required Dimension: "
-//                 <<dimensions.size()<<"; Actual parsed dimension: "<<std::endl;
-//        exit(10);
-//    }
+    std::string dimStr = dimension.getValue();
+    size_t num_d=1;
+    std::stringstream ss1;
+    unsigned long tmp;
+    std::vector<unsigned long> dimensions;
+    ss1 << dimStr;
+    while(ss1>>tmp){
+        dimensions.push_back(tmp);
+        num_d*=tmp;
+    }
+
+    if(num_d!=num) {
+        std::cerr<<"error: "<<"dimension doesn't match! "<<"Required Dimension: "
+                 <<dimensions.size()<<"; Actual parsed dimension: "<<std::endl;
+        exit(10);
+    }
 
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = (*ebs.end()).high;
@@ -120,25 +128,25 @@ int main(int argc, char **argv) {
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
-    const size_t DIM = 3;
-    auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
-    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.1* eb);
-    std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
+    size_t DIM = dimensions.size();
+    auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 1>>(eb, DIM);
+    auto P_reg = std::make_shared<SZ::RegressionPredictor<float>>(6, 0.1* eb, DIM);
+    std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float>>> predictors_;
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 
-    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{512, 512, 512});
-    auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+    SZ::Config<float> conf(eb, dimensions);
+    auto sz= SZ::SZ_General_Compressor<float, SZ::ComposedPredictor<float>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
-            SZ::ComposedPredictor<float, DIM>(predictors_),
+            SZ::ComposedPredictor<float>(predictors_,conf.N),
 //            SZ::LinearQuantizer<float>(eb),
             SZ::MultipleErrorBoundsQuantizer<float>(ebs),
             SZ::HuffmanEncoder<int>(),
             SZ::Lossless_zstd()
     );
-    auto sz_old = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+    auto sz_old = SZ::SZ_General_Compressor<float, SZ::ComposedPredictor<float>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
-            SZ::ComposedPredictor<float, DIM>(predictors_),
+            SZ::ComposedPredictor<float>(predictors_, conf.N),
             SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
             SZ::HuffmanEncoder<int>(),

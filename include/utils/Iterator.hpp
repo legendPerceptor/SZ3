@@ -16,8 +16,8 @@
 
 namespace SZ {
 // N-dimensional multi_dimensional_range
-    template<class T, size_t N>
-    class multi_dimensional_range : public std::enable_shared_from_this<multi_dimensional_range<T, N>> {
+    template<class T>
+    class multi_dimensional_range : public std::enable_shared_from_this<multi_dimensional_range<T>> {
     public:
 
         class multi_dimensional_iterator {
@@ -27,13 +27,14 @@ namespace SZ {
             using reference = T &;
             using const_reference = T const &;
             using pointer = T *;
+            size_t N;
             using iterator_category = std::bidirectional_iterator_tag;
 
             ~multi_dimensional_iterator() = default;
 
-            multi_dimensional_iterator() = default;
+            multi_dimensional_iterator(size_t dim):N(dim){}
 
-            multi_dimensional_iterator(multi_dimensional_iterator const &) = default;
+            multi_dimensional_iterator(multi_dimensional_iterator const &)=default;
 
             multi_dimensional_iterator &operator=(multi_dimensional_iterator const &) = default;
 
@@ -41,8 +42,8 @@ namespace SZ {
 
             multi_dimensional_iterator &operator=(multi_dimensional_iterator &&) noexcept = default;
 
-            multi_dimensional_iterator(std::shared_ptr<multi_dimensional_range> &&range_, std::size_t current_offset_) noexcept:
-                    range(range_), global_offset(current_offset_), local_index{} {
+            multi_dimensional_iterator(std::shared_ptr<multi_dimensional_range> &&range_, std::size_t current_offset_, size_t dim) noexcept:
+                    range(range_), global_offset(current_offset_), local_index(std::vector<size_t>(dim)), N(dim) {
             }
 
             multi_dimensional_iterator &operator--() {
@@ -112,9 +113,9 @@ namespace SZ {
 
 
 
-            std::array<size_t, N> get_global_index() const {
+            std::vector<size_t> get_global_index() const {
                 auto offset = global_offset;
-                std::array<size_t, N> global_idx{0};
+                std::vector<size_t> global_idx(N);
                 for (int i = N - 1; i >= 0; i--) {
                     global_idx[i] = offset % range->global_dimensions[i];
                     offset /= range->global_dimensions[i];
@@ -122,7 +123,7 @@ namespace SZ {
                 return global_idx;
             }
 
-            std::array<size_t, N> get_local_index() const {
+            std::vector<size_t> get_local_index() const {
                 return local_index;
             }
             size_t get_local_index(size_t i) const {
@@ -133,7 +134,7 @@ namespace SZ {
                 return global_offset;
             }
 
-            std::array<size_t, N> get_dimensions() const {
+            std::vector<size_t> get_dimensions() const {
                 return range->get_dimensions();
             }
 
@@ -146,9 +147,9 @@ namespace SZ {
             T prev(Args &&... pos) const {
                 // TODO: check int type
                 // TODO: change to offset map for efficiency
-                static_assert(sizeof...(Args) == N, "Must have the same number of arguments");
+//                static_assert(sizeof...(Args) == N, "Must have the same number of arguments");
                 auto offset = global_offset;
-                std::array<int, N> args{std::forward<Args>(pos)...};
+                std::vector<int> args{std::forward<Args>(pos)...};
                 for (int i = 0; i < N; i++) {
                     if (local_index[i] < args[i] && range->whether_global_start_position(i)) return 0;
                     offset -= args[i] ? args[i] * range->global_dim_strides[i] : 0;
@@ -160,12 +161,12 @@ namespace SZ {
             // For example, iterator in position (4,4) and dimension is 6x6, move(1,1) is supported but move (2,0) is not supported.
             template<class... Args>
             multi_dimensional_iterator &move(Args &&... pos) {
-                static_assert(sizeof...(Args) == N, "Must have the same number of arguments");
-                std::array<int, N> args{std::forward<Args>(pos)...};
+//                static_assert(sizeof...(Args) == N, "Must have the same number of arguments");
+                std::vector<int> args{std::forward<Args>(pos)...};
                 return move2(args);
             }
 
-            multi_dimensional_iterator &move2(std::array<int, N> args) {
+            multi_dimensional_iterator &move2(std::vector<int> args) {
                 for (int i = N - 1; i >= 0; i--) {
                     if (args[i]) {
                         assert(0 <= local_index[i] + args[i]);
@@ -205,7 +206,7 @@ namespace SZ {
         private:
             friend multi_dimensional_range;
             std::shared_ptr<multi_dimensional_range> range;
-            std::array<size_t, N> local_index;        // index of current_offset position
+            std::vector<size_t> local_index;        // index of current_offset position
             ptrdiff_t global_offset;
         };
 
@@ -216,11 +217,11 @@ namespace SZ {
         using pointer = T *;
 
         multi_dimensional_iterator begin() {
-            return multi_dimensional_iterator(this->shared_from_this(), start_offset);
+            return multi_dimensional_iterator(this->shared_from_this(), start_offset, N);
         }
 
         multi_dimensional_iterator end() {
-            return multi_dimensional_iterator(this->shared_from_this(), end_offset);
+            return multi_dimensional_iterator(this->shared_from_this(), end_offset, N);
         }
 
         template<class ForwardIt1>
@@ -263,7 +264,7 @@ namespace SZ {
         }
 
         // NOTE: did not consider the real offset for simplicity
-        void set_starting_position(const std::array<size_t, N> &dims) {
+        void set_starting_position(const std::vector<size_t> &dims) {
             for (int i = 0; i < N; i++) {
                 start_position[i] = (dims[i] == 0);
             }
@@ -275,8 +276,8 @@ namespace SZ {
                 ForwardIt1 global_dims_begin,
                 ForwardIt1 global_dims_end,
                 size_t stride_,
-                ptrdiff_t offset_
-        ): data(data_), start_position{false} {
+                ptrdiff_t offset_, size_t dim
+        ): data(data_), start_position(std::vector<bool>(dim)), N(dim), global_dimensions(std::vector<size_t>(dim)), global_dim_strides(std::vector<size_t>(dim)),dimensions(std::vector<size_t>(dim)) {
             static_assert(
                     std::is_convertible<
                             typename std::iterator_traits<ForwardIt1>::value_type,
@@ -294,6 +295,9 @@ namespace SZ {
             for (auto iter = global_dims_begin; iter != global_dims_end; ++iter) {
                 global_dimensions[i++] = *iter;
             }
+            for(i=0;i<N;i++){
+                start_position[i]= false;
+            }
 //            size_t cur_stride = stride_;
 //            for (int i = N - 1; i >= 0; i--) {
 //                global_dim_strides[i] = cur_stride;
@@ -309,11 +313,11 @@ namespace SZ {
             return dimensions[i];
         }
 
-        std::array<size_t, N> get_dimensions() const {
+        std::vector<size_t> get_dimensions() const {
             return dimensions;
         }
 
-        std::array<size_t, N> get_global_dimensions() const {
+        std::vector<size_t> get_global_dimensions() const {
             return global_dimensions;
         }
 
@@ -326,15 +330,16 @@ namespace SZ {
         }
 
     private:
-        std::array<size_t, N> global_dimensions;
-        std::array<size_t, N> global_dim_strides;
-        std::array<size_t, N> dimensions;              // the dimensions
-//        std::array<size_t, N> dim_strides;              // strides for dimensions
-        std::array<bool, N> start_position;       // indicator for starting position, used for block-wise lorenzo predictor
+        std::vector<size_t> global_dimensions;
+        std::vector<size_t> global_dim_strides;
+        std::vector<size_t> dimensions;              // the dimensions
+//        std::vector<size_t> dim_strides;              // strides for dimensions
+        std::vector<bool> start_position;       // indicator for starting position, used for block-wise lorenzo predictor
         size_t access_stride;                                // stride for access pattern
         ptrdiff_t start_offset;                              // offset for start point
         ptrdiff_t end_offset;                                  // offset for end point
         T *data;                                                    // data pointer
+        size_t N;
     };
 
 }

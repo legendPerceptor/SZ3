@@ -16,7 +16,7 @@ namespace SZ {
 
     // N-d regression predictor
     template<class T, uint N, uint M = (N + 1) * (N + 2) / 2>
-    class PolyRegressionPredictor : public concepts::PredictorInterface<T, N> {
+    class PolyRegressionPredictor : public concepts::PredictorInterface<T> {
     public:
         static const uint8_t predictor_id = 0b00000011;
 
@@ -38,8 +38,8 @@ namespace SZ {
             init_poly();
         }
 
-        using Range = multi_dimensional_range<T, N>;
-        using iterator = typename multi_dimensional_range<T, N>::iterator;
+        using Range = multi_dimensional_range<T>;
+        using iterator = typename multi_dimensional_range<T>::iterator;
 
         void precompress_data(const iterator &) const noexcept {}
 

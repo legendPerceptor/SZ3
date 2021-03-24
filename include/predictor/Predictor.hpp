@@ -10,11 +10,11 @@ namespace SZ {
 
     namespace concepts {
 
-        template<class T, uint N>
+        template<class T>
         class PredictorInterface {
         public:
-            using Range = multi_dimensional_range<T, N>;
-            using iterator = typename multi_dimensional_range<T, N>::iterator;
+            using Range = multi_dimensional_range<T>;
+            using iterator = typename multi_dimensional_range<T>::iterator;
 
             virtual ~PredictorInterface() = default;
 

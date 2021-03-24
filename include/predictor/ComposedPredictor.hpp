@@ -11,11 +11,12 @@
 
 namespace SZ {
 
-    template<class T, uint N>
-    class ComposedPredictor : public concepts::PredictorInterface<T, N> {
+    template<class T>
+    class ComposedPredictor : public concepts::PredictorInterface<T> {
     public:
-        using Range = multi_dimensional_range<T, N>;
-        using iterator = typename multi_dimensional_range<T, N>::iterator;
+        using Range = multi_dimensional_range<T>;
+        using iterator = typename multi_dimensional_range<T>::iterator;
+        size_t N;
 
         void precompress_data(const iterator &iter) const noexcept {
             for (const auto &p:predictors) {
@@ -144,30 +145,7 @@ namespace SZ {
             }
         }
 
-//        template<typename P1>
-//        void instantiate(P1 p1) {
-//            predictors.push_back(std::move(p1));
-//        }
-//
-//        template<typename P1>
-//        void unpack(P1 p1) {
-//            instantiate(p1);
-//        }
-//
-//        template<typename P1, typename... Rest>
-//        void unpack(P1 p1, Rest... Rs) {
-//            instantiate<P1>(p1);
-//            unpack(Rs...);
-//        }
-//
-//        template<class... Predictors>
-//        ComposedPredictor(Predictors &&... Ps) {
-//            unpack(Ps...);
-//        }
-
-        ComposedPredictor(std::vector<std::shared_ptr<concepts::PredictorInterface < T, N>>
-
-        > predictors) {
+        ComposedPredictor(std::vector<std::shared_ptr<concepts::PredictorInterface < T>>> predictors, size_t dim):N(dim) {
             this->predictors = predictors;
             predict_error.resize(predictors.size());
         }
@@ -180,97 +158,85 @@ namespace SZ {
         }
 
     private:
-        std::vector<std::shared_ptr<concepts::PredictorInterface < T, N>>>
-        predictors;
+        std::vector<std::shared_ptr<concepts::PredictorInterface < T>>> predictors;
         std::vector<int> selection;
         int sid = 0;                            // selected index
         size_t current_index = 0;            // for decompression only
         std::vector<double> predict_error;
 
-        template<uint NN = N>
-        inline typename std::enable_if<NN == 1, void>::type
+        inline void
         do_estimate_error(const iterator &iter, int min_dimension) {
-            std::fill(predict_error.begin(), predict_error.end(), 0);
-            auto iter1 = iter;
-            iter1.move(min_dimension - 1);
-            for (int p = 0; p < predictors.size(); p++) {
-                predict_error[p] += predictors[p]->estimate_error(iter);
-                predict_error[p] += predictors[p]->estimate_error(iter1);
-            }
-        }
-
-        template<uint NN = N>
-        inline typename std::enable_if<NN == 2, void>::type
-        do_estimate_error(const iterator &iter, int min_dimension) {
-            std::fill(predict_error.begin(), predict_error.end(), 0);
-            auto iter1 = iter, iter2 = iter;
-            iter2.move(0, min_dimension - 1);
-            for (int i = 2; i < min_dimension; i++) {
+            if(N==1) {
+                std::fill(predict_error.begin(), predict_error.end(), 0);
+                auto iter1 = iter;
+                iter1.move(min_dimension - 1);
                 for (int p = 0; p < predictors.size(); p++) {
+                    predict_error[p] += predictors[p]->estimate_error(iter);
                     predict_error[p] += predictors[p]->estimate_error(iter1);
-                    predict_error[p] += predictors[p]->estimate_error(iter2);
                 }
-                iter1.move(1, 1);
-                iter2.move(1, -1);
-            }
-        }
-
-        template<uint NN = N>
-        inline typename std::enable_if<NN == 3, void>::type
-        do_estimate_error(const iterator &iter, int min_dimension) {
-            std::fill(predict_error.begin(), predict_error.end(), 0);
+            }else if(N==2){
+                std::fill(predict_error.begin(), predict_error.end(), 0);
+                auto iter1 = iter, iter2 = iter;
+                iter2.move(0, min_dimension - 1);
+                for (int i = 2; i < min_dimension; i++) {
+                    for (int p = 0; p < predictors.size(); p++) {
+                        predict_error[p] += predictors[p]->estimate_error(iter1);
+                        predict_error[p] += predictors[p]->estimate_error(iter2);
+                    }
+                    iter1.move(1, 1);
+                    iter2.move(1, -1);
+                }
+            }else if(N==3) {
+                std::fill(predict_error.begin(), predict_error.end(), 0);
 //            std::vector<double> err(predictors.size(), 0);
-            auto iter1 = iter, iter2 = iter, iter3 = iter, iter4 = iter;
-            iter2.move(0, 0, min_dimension - 1);
-            iter3.move(0, min_dimension - 1, 0);
-            iter4.move(0, min_dimension - 1, min_dimension - 1);
-            for (int i = 2; i < min_dimension; i++) {
-                for (int p = 0; p < predictors.size(); p++) {
-                    predict_error[p] += predictors[p]->estimate_error(iter1);
-                    predict_error[p] += predictors[p]->estimate_error(iter2);
-                    predict_error[p] += predictors[p]->estimate_error(iter3);
-                    predict_error[p] += predictors[p]->estimate_error(iter4);
+                auto iter1 = iter, iter2 = iter, iter3 = iter, iter4 = iter;
+                iter2.move(0, 0, min_dimension - 1);
+                iter3.move(0, min_dimension - 1, 0);
+                iter4.move(0, min_dimension - 1, min_dimension - 1);
+                for (int i = 2; i < min_dimension; i++) {
+                    for (int p = 0; p < predictors.size(); p++) {
+                        predict_error[p] += predictors[p]->estimate_error(iter1);
+                        predict_error[p] += predictors[p]->estimate_error(iter2);
+                        predict_error[p] += predictors[p]->estimate_error(iter3);
+                        predict_error[p] += predictors[p]->estimate_error(iter4);
+                    }
+                    iter1.move(1, 1, 1);
+                    iter2.move(1, 1, -1);
+                    iter3.move(1, -1, 1);
+                    iter4.move(1, -1, -1);
                 }
-                iter1.move(1, 1, 1);
-                iter2.move(1, 1, -1);
-                iter3.move(1, -1, 1);
-                iter4.move(1, -1, -1);
-            }
-        }
-
-        template<uint NN = N>
-        inline typename std::enable_if<NN >= 4, void>::type
-        do_estimate_error(const iterator &iter, int min_dimension) {
-            std::fill(predict_error.begin(), predict_error.end(), 0);
+            }else if(N==4){
+                std::fill(predict_error.begin(), predict_error.end(), 0);
 //            std::vector<double> err(predictors.size(), 0);
-            auto iter1 = iter, iter2 = iter, iter3 = iter, iter4 = iter,
-                    iter5 = iter, iter6 = iter, iter7 = iter, iter8 = iter;;
-            iter2.move(0, 0, 0, min_dimension - 1);
-            iter3.move(0, 0, min_dimension - 1, 0);
-            iter4.move(0, 0, min_dimension - 1, min_dimension - 1);
-            iter5.move(0, min_dimension - 1, 0, 0);
-            iter6.move(0, min_dimension - 1, 0, min_dimension - 1);
-            iter7.move(0, min_dimension - 1, min_dimension - 1, 0);
-            iter8.move(0, min_dimension - 1, min_dimension - 1, min_dimension - 1);
-            for (int i = 2; i < min_dimension; i++) {
-                for (int p = 0; p < predictors.size(); p++) {
-                    predict_error[p] += predictors[p]->estimate_error(iter1);
-                    predict_error[p] += predictors[p]->estimate_error(iter2);
-                    predict_error[p] += predictors[p]->estimate_error(iter3);
-                    predict_error[p] += predictors[p]->estimate_error(iter4);
-                    predict_error[p] += predictors[p]->estimate_error(iter5);
-                    predict_error[p] += predictors[p]->estimate_error(iter6);
-                    predict_error[p] += predictors[p]->estimate_error(iter7);
-                    predict_error[p] += predictors[p]->estimate_error(iter8);
+                auto iter1 = iter, iter2 = iter, iter3 = iter, iter4 = iter,
+                        iter5 = iter, iter6 = iter, iter7 = iter, iter8 = iter;;
+                iter2.move(0, 0, 0, min_dimension - 1);
+                iter3.move(0, 0, min_dimension - 1, 0);
+                iter4.move(0, 0, min_dimension - 1, min_dimension - 1);
+                iter5.move(0, min_dimension - 1, 0, 0);
+                iter6.move(0, min_dimension - 1, 0, min_dimension - 1);
+                iter7.move(0, min_dimension - 1, min_dimension - 1, 0);
+                iter8.move(0, min_dimension - 1, min_dimension - 1, min_dimension - 1);
+                for (int i = 2; i < min_dimension; i++) {
+                    for (int p = 0; p < predictors.size(); p++) {
+                        predict_error[p] += predictors[p]->estimate_error(iter1);
+                        predict_error[p] += predictors[p]->estimate_error(iter2);
+                        predict_error[p] += predictors[p]->estimate_error(iter3);
+                        predict_error[p] += predictors[p]->estimate_error(iter4);
+                        predict_error[p] += predictors[p]->estimate_error(iter5);
+                        predict_error[p] += predictors[p]->estimate_error(iter6);
+                        predict_error[p] += predictors[p]->estimate_error(iter7);
+                        predict_error[p] += predictors[p]->estimate_error(iter8);
+                    }
+                    iter1.move(1, 1, 1, 1);
+                    iter2.move(1, 1, 1, -1);
+                    iter3.move(1, 1, -1, 1);
+                    iter4.move(1, 1, -1, -1);
+                    iter5.move(1, -1, 1, 1);
+                    iter6.move(1, -1, 1, -1);
+                    iter7.move(1, -1, -1, 1);
+                    iter8.move(1, -1, -1, -1);
                 }
-                iter1.move(1, 1, 1, 1);
-                iter2.move(1, 1, 1, -1);
-                iter3.move(1, 1, -1, 1);
-                iter4.move(1, 1, -1, -1);
-                iter5.move(1, -1, 1, 1);
-                iter6.move(1, -1, 1, -1);
-                iter7.move(1, -1, -1, 1);
-                iter8.move(1, -1, -1, -1);
             }
         }
     };
