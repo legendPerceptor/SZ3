@@ -382,14 +382,14 @@ namespace SZ {
             } else if (pred_index < tmp_index) {
                 decompressed_data = ebs[pred_index].high;
             }
-            auto t1=fabs(decompressed_data - ebs[tmp_index].high),
-                t2=ebs[tmp_index].eb,
-                t3=fabs(decompressed_data - ebs[tmp_index].low);
-            if( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()){
-                decompressed_data = ebs[tmp_index].high;
-            } else if(t3<t2&& fabs(t3-t2)>std::numeric_limits<T>::epsilon()){
-                decompressed_data = ebs[tmp_index].low;
-            }
+//            auto t1=fabs(decompressed_data - ebs[tmp_index].high),
+//                t2=ebs[tmp_index].eb,
+//                t3=fabs(decompressed_data - ebs[tmp_index].low);
+//            if( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()){
+//                decompressed_data = ebs[tmp_index].high;
+//            } else if(t3<t2&& fabs(t3-t2)>std::numeric_limits<T>::epsilon()){
+//                decompressed_data = ebs[tmp_index].low;
+//            }
         } else if(pred_index > data_index) {
             int quant_value = 0;
             quant_value -= (int)round((pred - ebs[pred_index].low)/(2*ebs[pred_index].eb));
@@ -450,6 +450,10 @@ namespace SZ {
                 for(i=pred_index-1;i>0;i--){
                     if(remaining_quant+quant_range[i]>=0){
                         decompressed_data = ebs[i].high + remaining_quant*(2*ebs[i].eb);
+                        int dp_index = getErrorBoundIndex(decompressed_data, false);
+                        if(dp_index!=i){
+                            decompressed_data = ebs[i].low;
+                        }
                         return decompressed_data;
                     }
                     remaining_quant+=quant_range[i];
@@ -461,13 +465,16 @@ namespace SZ {
                 decompressed_data = pred+ remaining_quant*(2*ebs[pred_index].eb);
                 if(actual_quant+ tmp ==0) {
                     int tmp_index = getErrorBoundIndex(pred, false);
-                    auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                        t2=ebs[tmp_index].eb,
-                        t3=fabs(decompressed_data - ebs[tmp_index].low);
-                    if ( t1< 1.5*t2) {
-                        decompressed_data = ebs[tmp_index].high;
-                    } else if (t3 < 1.5*t2) {
-                        decompressed_data = ebs[tmp_index].low;
+                    int dp_index = getErrorBoundIndex(decompressed_data, false);
+                    if(dp_index!=tmp_index) {
+                        auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                                t2 = ebs[tmp_index].eb,
+                                t3 = fabs(decompressed_data - ebs[tmp_index].low);
+                        if (t1 < t2) {
+                            decompressed_data = ebs[tmp_index].high;
+                        } else if (t3 < t2) {
+                            decompressed_data = ebs[tmp_index].low;
+                        }
                     }
                 }
                 return decompressed_data;
@@ -475,14 +482,14 @@ namespace SZ {
         } else if(actual_quant == 0){
             int tmp_index = pred_index;
             decompressed_data = pred;
-            auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                    t2=ebs[tmp_index].eb,
-                    t3=fabs(decompressed_data -ebs[tmp_index].low);
-            if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
-                decompressed_data = ebs[tmp_index].high;
-            } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
-                decompressed_data = ebs[tmp_index].low;
-            }
+//            auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+//                    t2=ebs[tmp_index].eb,
+//                    t3=fabs(decompressed_data -ebs[tmp_index].low);
+//            if ( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()) {
+//                decompressed_data = ebs[tmp_index].high;
+//            } else if (t3 < t2 && fabs(t3-t2)>std::numeric_limits<T>::epsilon()) {
+//                decompressed_data = ebs[tmp_index].low;
+//            }
             return decompressed_data;
         } else {
             tmp = (int)round((ebs[pred_index].high- pred)/(2*ebs[pred_index].eb));
@@ -491,6 +498,10 @@ namespace SZ {
                 for(i=pred_index+1;i<range_size-1;i++){
                     if(remaining_quant - quant_range[i]<=0){
                         decompressed_data = ebs[i].low + 2*remaining_quant*ebs[i].eb;
+                        int dp_index = getErrorBoundIndex(decompressed_data, false);
+                        if(dp_index!=i){
+                            decompressed_data = ebs[i].high;
+                        }
                         return decompressed_data;
                     }
                     remaining_quant -=quant_range[i];
@@ -502,13 +513,16 @@ namespace SZ {
                 decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
                 if(actual_quant- tmp ==0) {
                     int tmp_index = getErrorBoundIndex(pred, false);
-                    auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                            t2 = ebs[tmp_index].eb,
-                            t3 = fabs(decompressed_data - ebs[tmp_index].low);
-                    if (t1 < 1.5 * t2) {
-                        decompressed_data = ebs[tmp_index].high;
-                    } else if (t3 < 1.5 * t2) {
-                        decompressed_data = ebs[tmp_index].low;
+                    int dp_index = getErrorBoundIndex(decompressed_data, false);
+                    if(tmp_index!=dp_index) {
+                        auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
+                                t2 = ebs[tmp_index].eb,
+                                t3 = fabs(decompressed_data - ebs[tmp_index].low);
+                        if (t1 < t2) {
+                            decompressed_data = ebs[tmp_index].high;
+                        } else if (t3 < t2) {
+                            decompressed_data = ebs[tmp_index].low;
+                        }
                     }
                 }
                 return decompressed_data;

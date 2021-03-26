@@ -5,4 +5,5 @@ build
 .idea
 cmake-build-debug/
 .DS_Store
+*.log
 data/downloads/

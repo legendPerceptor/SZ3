@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         convert(data.get(), num);
     }
 
-    std::cout<<"special: "<< data[33726978]<<std::endl;
+//    std::cout<<"special: "<< data[33726978]<<std::endl;
 //    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
 //    float dp= data[33726978];
 //    quantizer.recover(111.66, -8+32768);
@@ -120,14 +120,14 @@ int main(int argc, char **argv) {
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
-    const size_t DIM = 3;
+    const size_t DIM = 2;
     auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
     auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.1* eb);
     std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 
-    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{512, 512, 512});
+    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{1800, 3600});
     auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
             SZ::ComposedPredictor<float, DIM>(predictors_),
