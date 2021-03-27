@@ -12,8 +12,6 @@
 #include <memory>
 #include <type_traits>
 #include <chrono>
-#include <filesystem>
-namespace fs = std::filesystem;
 //void myfunc(){
 //    size_t my_size;
 //    auto compressed_file = SZ::readfile<unsigned char>("/Users/hython/Development/globus/output/test.dat", my_size);

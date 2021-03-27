@@ -450,8 +450,7 @@ namespace SZ {
                 for(i=pred_index-1;i>0;i--){
                     if(remaining_quant+quant_range[i]>=0){
                         decompressed_data = ebs[i].high + remaining_quant*(2*ebs[i].eb);
-                        int dp_index = getErrorBoundIndex(decompressed_data, false);
-                        if(dp_index!=i){
+                        if(decompressed_data<ebs[i].low){
                             decompressed_data = ebs[i].low;
                         }
                         return decompressed_data;
@@ -465,22 +464,14 @@ namespace SZ {
                 decompressed_data = pred+ remaining_quant*(2*ebs[pred_index].eb);
                 if(actual_quant+ tmp ==0) {
                     int tmp_index = getErrorBoundIndex(pred, false);
-                    int dp_index = getErrorBoundIndex(decompressed_data, false);
-                    if(dp_index!=tmp_index) {
-                        auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                                t2 = ebs[tmp_index].eb,
-                                t3 = fabs(decompressed_data - ebs[tmp_index].low);
-                        if (t1 < t2) {
-                            decompressed_data = ebs[tmp_index].high;
-                        } else if (t3 < t2) {
-                            decompressed_data = ebs[tmp_index].low;
-                        }
+                    if(decompressed_data < ebs[tmp_index].low) {
+                        decompressed_data = ebs[tmp_index].low;
                     }
                 }
                 return decompressed_data;
             }
         } else if(actual_quant == 0){
-            int tmp_index = pred_index;
+//            int tmp_index = pred_index;
             decompressed_data = pred;
 //            auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
 //                    t2=ebs[tmp_index].eb,
@@ -498,8 +489,7 @@ namespace SZ {
                 for(i=pred_index+1;i<range_size-1;i++){
                     if(remaining_quant - quant_range[i]<=0){
                         decompressed_data = ebs[i].low + 2*remaining_quant*ebs[i].eb;
-                        int dp_index = getErrorBoundIndex(decompressed_data, false);
-                        if(dp_index!=i){
+                        if(decompressed_data>ebs[i].high){
                             decompressed_data = ebs[i].high;
                         }
                         return decompressed_data;
@@ -513,16 +503,8 @@ namespace SZ {
                 decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
                 if(actual_quant- tmp ==0) {
                     int tmp_index = getErrorBoundIndex(pred, false);
-                    int dp_index = getErrorBoundIndex(decompressed_data, false);
-                    if(tmp_index!=dp_index) {
-                        auto t1 = fabs(decompressed_data - ebs[tmp_index].high),
-                                t2 = ebs[tmp_index].eb,
-                                t3 = fabs(decompressed_data - ebs[tmp_index].low);
-                        if (t1 < t2) {
-                            decompressed_data = ebs[tmp_index].high;
-                        } else if (t3 < t2) {
-                            decompressed_data = ebs[tmp_index].low;
-                        }
+                    if(decompressed_data>ebs[tmp_index].high) {
+                        decompressed_data = ebs[tmp_index].high;
                     }
                 }
                 return decompressed_data;

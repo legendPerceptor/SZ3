@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         convert(data.get(), num);
     }
 
-//    std::cout<<"special: "<< data[33726978]<<std::endl;
+    std::cout<<"special: "<< data[1180022]<<std::endl;
 //    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
 //    float dp= data[33726978];
 //    quantizer.recover(111.66, -8+32768);
