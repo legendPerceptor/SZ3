@@ -374,31 +374,27 @@ namespace SZ {
             T error_bound = ebs[data_index].eb;
             T error_bound_reciprocal = 1/error_bound;
             int quant = (int)round(diff *(error_bound_reciprocal*0.5));
-            quant_index_shifted = this->radius + quant;
+
             decompressed_data = pred + quant* 2 * error_bound;
             int tmp_index = getErrorBoundIndex(decompressed_data, false);
             if(pred_index > tmp_index ){
-                decompressed_data = ebs[pred_index].low;
+                decompressed_data = ebs[pred_index].low + ebs[pred_index].eb;
             } else if (pred_index < tmp_index) {
-                decompressed_data = ebs[pred_index].high;
+                decompressed_data = ebs[pred_index].high - ebs[pred_index].eb;
             }
-//            auto t1=fabs(decompressed_data - ebs[tmp_index].high),
-//                t2=ebs[tmp_index].eb,
-//                t3=fabs(decompressed_data - ebs[tmp_index].low);
-//            if( t1< t2 && fabs(t1-t2)>std::numeric_limits<T>::epsilon()){
-//                decompressed_data = ebs[tmp_index].high;
-//            } else if(t3<t2&& fabs(t3-t2)>std::numeric_limits<T>::epsilon()){
-//                decompressed_data = ebs[tmp_index].low;
-//            }
+            quant_index_shifted = this->radius + quant;
         } else if(pred_index > data_index) {
             int quant_value = 0;
             quant_value -= (int)round((pred - ebs[pred_index].low)/(2*ebs[pred_index].eb));
             for(int i=pred_index-1; i>=data_index+1;i--){
                 quant_value -= quant_range[i];
             }
-            tmp = (int)round((ebs[data_index].high-data)/(2*ebs[data_index].eb));
-            decompressed_data = ebs[data_index].high - tmp * (2*ebs[data_index].eb);
-            quant_value -= tmp;
+            tmp = (int)round((ebs[data_index].high-ebs[pred_index].eb-data)/(2*ebs[data_index].eb));
+            decompressed_data = ebs[data_index].high-ebs[pred_index].eb - tmp * (2*ebs[data_index].eb);
+            if(decompressed_data < ebs[data_index].low){
+                decompressed_data = ebs[data_index].low + ebs[data_index].eb;
+            }
+            quant_value -= tmp+1;//Add one more quantization value
             quant_index_shifted = this->radius + quant_value;
         } else if(pred_index < data_index) {
             int quant_value = 0;
@@ -406,9 +402,12 @@ namespace SZ {
             for(int i=pred_index+1; i<=data_index-1;i++){
                 quant_value += quant_range[i];
             }
-            tmp = (int)round((data - ebs[data_index].low)/(2*ebs[data_index].eb));
-            decompressed_data = ebs[data_index].low + tmp * (2*ebs[data_index].eb);
-            quant_value += tmp;
+            tmp = (int)round((data - (ebs[data_index].low+ebs[pred_index].eb))/(2*ebs[data_index].eb));
+            decompressed_data = ebs[data_index].low+ebs[pred_index].eb + tmp * (2*ebs[data_index].eb);
+            if(decompressed_data > ebs[data_index].high){
+                decompressed_data = ebs[data_index].high - ebs[data_index].eb;
+            }
+            quant_value += tmp+1;
             quant_index_shifted = this->radius + quant_value;
         }
 
@@ -440,7 +439,7 @@ namespace SZ {
         }
         int pred_index = getErrorBoundIndex(pred, true);
         int actual_quant = quant_index - this->radius;
-        int i=pred_index, remaining_quant = actual_quant;
+        int i, remaining_quant = actual_quant;
         int tmp;
         T decompressed_data = pred;
         if(actual_quant<0){
@@ -449,25 +448,28 @@ namespace SZ {
                 remaining_quant += tmp;
                 for(i=pred_index-1;i>0;i--){
                     if(remaining_quant+quant_range[i]>=0){
-                        decompressed_data = ebs[i].high + remaining_quant*(2*ebs[i].eb);
+                        decompressed_data = ebs[i].high-ebs[i].eb + (remaining_quant+1)*(2*ebs[i].eb);
                         if(decompressed_data<ebs[i].low){
-                            decompressed_data = ebs[i].low;
+                            decompressed_data = ebs[i].low+ebs[i].eb;
                         }
                         return decompressed_data;
                     }
                     remaining_quant+=quant_range[i];
                 }
                 // i = 0
-                decompressed_data = ebs[0].high + remaining_quant*(2*ebs[0].eb);
+                decompressed_data = ebs[0].high-ebs[0].eb + (remaining_quant+1)*(2*ebs[0].eb);
                 return decompressed_data;
-            } else {
+            } else { //data and pred are in the same range
                 decompressed_data = pred+ remaining_quant*(2*ebs[pred_index].eb);
-                if(actual_quant+ tmp ==0) {
-                    int tmp_index = getErrorBoundIndex(pred, false);
-                    if(decompressed_data < ebs[tmp_index].low) {
-                        decompressed_data = ebs[tmp_index].low;
-                    }
+                if(decompressed_data < ebs[pred_index].low){
+                    decompressed_data = ebs[pred_index].low + ebs[pred_index].eb;
                 }
+//                if(actual_quant+ tmp ==0) {
+//                    int tmp_index = getErrorBoundIndex(pred, false);
+//                    if(decompressed_data < ebs[tmp_index].low) {
+//                        decompressed_data = ebs[tmp_index].low;
+//                    }
+//                }
                 return decompressed_data;
             }
         } else if(actual_quant == 0){
@@ -488,25 +490,28 @@ namespace SZ {
                 remaining_quant -= tmp;
                 for(i=pred_index+1;i<range_size-1;i++){
                     if(remaining_quant - quant_range[i]<=0){
-                        decompressed_data = ebs[i].low + 2*remaining_quant*ebs[i].eb;
+                        decompressed_data = ebs[i].low + ebs[i].eb + 2*(remaining_quant-1)*ebs[i].eb;
                         if(decompressed_data>ebs[i].high){
-                            decompressed_data = ebs[i].high;
+                            decompressed_data = ebs[i].high - ebs[i].eb;
                         }
                         return decompressed_data;
                     }
                     remaining_quant -=quant_range[i];
                 }
                 // i = range_size -1
-                decompressed_data = ebs[range_size -1].low + 2*remaining_quant*ebs[range_size -1].eb;
+                decompressed_data = ebs[range_size -1].low+ebs[range_size-1].eb + 2*(remaining_quant-1)*ebs[range_size -1].eb;
                 return decompressed_data;
-            } else {
+            } else { // data and pred are in the same range
                 decompressed_data = pred + 2*remaining_quant*ebs[pred_index].eb;
-                if(actual_quant- tmp ==0) {
-                    int tmp_index = getErrorBoundIndex(pred, false);
-                    if(decompressed_data>ebs[tmp_index].high) {
-                        decompressed_data = ebs[tmp_index].high;
-                    }
+                if(decompressed_data > ebs[pred_index].high){
+                    decompressed_data = ebs[pred_index].high-ebs[pred_index].eb;
                 }
+//                if(actual_quant- tmp ==0) {
+//                    int tmp_index = getErrorBoundIndex(pred, false);
+//                    if(decompressed_data>ebs[tmp_index].high) {
+//                        decompressed_data = ebs[tmp_index].high-ebs[tmp_index].eb;
+//                    }
+//                }
                 return decompressed_data;
             }
         }
