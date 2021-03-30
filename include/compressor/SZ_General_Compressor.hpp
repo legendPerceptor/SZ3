@@ -277,10 +277,11 @@ namespace SZ {
                                 exit(1);
                             }
                             *element = quantizer.recover(pred,
-                                                         quant_inds[element.get_offset()]);
+                                                         quant_inds[offset]);
                             if( fabs(*element - element_debug[offset]) > 0.02) {
-                                printf("offset: %d, *element=%.4f, debug_element=%.4f\n", offset, *element, element_debug[offset]);
-                                printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
+                                printf("offset: %d, *element=%.6f, debug_element=%.6f\n", offset, *element, element_debug[offset]);
+                                printf("offset: %d, pred=%.6f, debug_pred=%.6f\n", offset, pred, prediction_debug[offset]);
+                                printf("Quantization: %d\n", quant_inds[offset]-32768);
                                 exit(2);
                             }
                         }

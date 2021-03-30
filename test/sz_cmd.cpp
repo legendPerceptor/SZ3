@@ -95,39 +95,39 @@ int main(int argc, char **argv) {
         convert(data.get(), num);
     }
 
-    std::cout<<"special: "<< data[2760495]<<std::endl;
+//    std::cout<<"special: "<< data[67396647]<<std::endl;
 //    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//    float dp= data[33726978];
-//    quantizer.recover(111.66, -8+32768);
+//    float dp= data[67396647];
+//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -2.9);
+//    quantizer.recover(-2.9, tmp_quant);
 //    printf("tests!!!!!!");
 //    quantizer.quantize_and_overwrite(dp, 86.8644);
 //    printf("tests!!!!!!");
 //    exit(1);
-//    auto dimensions = dimension.getValue();
-//    size_t num_d=1;
-//    for(auto iter=dimensions.begin();iter!=dimensions.end();iter++){
-//        num_d*=(*iter);
-//    }
-//    if(num_d!=num) {
-//        std::cerr<<"error: "<<"dimension doesn't match! "<<"Required Dimension: "
-//                 <<dimensions.size()<<"; Actual parsed dimension: "<<std::endl;
-//        exit(10);
-//    }
-
+//    std::cout<<"special: "<< data[2318400]<<std::endl;
+//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//    float dp= data[2318400];
+//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -5.3000);
+//    quantizer.recover(-5.3000, tmp_quant);
+//    std::cout<<"special: "<< data[40237315]<<std::endl;
+//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//    float dp= data[40237315];
+//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -0.239921);
+//    quantizer.recover(-0.239921, tmp_quant);
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = (*ebs.end()).high;
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
-    const size_t DIM = 2;
+    const size_t DIM = 3;
     auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
-    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.1* eb);
+    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.00001);
     std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 
-    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{1800, 3600});
+    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{69, 69, 33120});
     auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
             SZ::ComposedPredictor<float, DIM>(predictors_),
