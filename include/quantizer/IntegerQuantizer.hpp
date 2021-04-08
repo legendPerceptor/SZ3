@@ -225,18 +225,19 @@ namespace SZ {
                 T eb_cur = ebs[i].eb;
                 T tmp = (high-low)/(2*eb_cur);
                 int quant_num=round(tmp);
-//                if(tmp> floor(tmp)){
-//                    quant_num = (int)floor(tmp)+1;
-//                }else{
-//                    quant_num = (int)floor(tmp);
-//                }
-//                quant_num = (int)round(tmp);
-//                std::get<2>(ebs[i]) = (high-low)/(2*quant_num);
-//                ebs[i].eb = (high-low)/(2*quant_num);
                 quant_range.push_back(quant_num);
             }
+            global_min = ebs[0].low;
+            global_max = ebs[ebs.size()-1].high;
+            T last_low = ebs[ebs.size()-1].high;
+            T last_eb = ebs[ebs.size()-1].eb;
+            T first_high = ebs[0].low;
+            T first_eb = ebs[0].eb;
+            ebs.push_back(RangeTuple<T>(last_low, 10000, last_eb));
+            quant_range.push_back((int)(10000-last_low)/(2*last_eb));
+            ebs.insert(ebs.begin(),RangeTuple<T>(-10000, first_high, first_eb));
+            quant_range.insert(quant_range.begin(), (int)(first_high+10000)/(2*first_eb));
             range_size = ebs.size();
-            last_data_range = -1;
             last_data_range = -1;
         }
 
@@ -326,8 +327,9 @@ namespace SZ {
         std::vector<int> quant_range;
         size_t index = 0; // used in decompression only
         std::vector<RangeTuple<T>> ebs;
+        T global_min, global_max;
         int radius;
-        int last_pred_range, last_data_range;
+        int last_data_range;
         int range_size;
         const T EPSILON = 0.001;
 
@@ -492,12 +494,16 @@ namespace SZ {
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize(T data, T pred){
+        data = fmin(fmax(global_min+1.1*EPSILON, data), global_max-1.1*EPSILON);
+//        pred = fmin(fmax(global_min, pred), global_max);
         auto t = quantize_actual(data, pred);
         return t.b;
     }
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
+        data = fmin(fmax(global_min+1.1*EPSILON, data), global_max-1.1*EPSILON);
+//        pred = fmin(fmax(global_min, pred), global_max);
         auto t = quantize_actual(data, pred);
         data = t.a;
         return t.b;
@@ -505,6 +511,7 @@ namespace SZ {
 
     template<class T>
     T MultipleErrorBoundsQuantizer<T>::recover(T pred, int quant_index) {
+//        pred = fmin(fmax(global_min, pred), global_max);
         if(quant_index==0){
             return unpred[index++];
         }
@@ -528,7 +535,7 @@ namespace SZ {
             if(t1==t2){
                 tmp= t1%2==0? t1/2 : (t1+1)/2;
             }else{
-                if(fabs((T)t2*ebs[pred_index].eb-t_diff)<0.001){
+                if(fabs((T)t2*ebs[pred_index].eb-t_diff)<EPSILON){
                     tmp = t2%2==0 ? t2/2 : (t2+1)/2;
                 }else{
                     tmp = t1%2==0 ? t1/2 : (t1+1)/2;

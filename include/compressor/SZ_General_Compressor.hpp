@@ -46,9 +46,11 @@ namespace SZ {
                                                                                          std::end(global_dimensions), 1,
                                                                                          0);
 
-            std::vector<int> quant_inds(num_elements);
+            std::vector<int> quant_inds;
+            quant_inds.resize(num_elements);
             std::vector<int> bitmap;
             std::vector<int> signs;
+            std::array<size_t, N> intra_block_dims;
             if(has_bg) {
                 if (preserve_sign) {
                     signs.resize(num_elements);
@@ -56,31 +58,49 @@ namespace SZ {
                 if (use_bitmap) {
                     bitmap.resize(num_elements);
                 }
-
                 T tmp;
-                for (auto element = intra_block_range->begin(); element != intra_block_range->end(); ++element) {
-                    if (*element == bg_data) {
-                        if (use_bitmap) {
-                            bitmap[element.get_offset()] = 1;
-                        } else {
-                            quant_inds[element.get_offset()] = 2 * quantizer.get_radius() + 1;
-                        }
-                        tmp = my_lorenzo.predict(element);
-                        if (tmp >= low_range && tmp <= high_range) {
-                            *element = tmp;
-                        } else {
-//                        tmp = (low_range + high_range)/2;
-                            tmp = 0;
-                            *element = tmp;
-                        }
+                auto inter_begin = inter_block_range->begin();
+                auto inter_end = inter_block_range->end();
+                for (auto block = inter_begin; block != inter_end; ++block) {
+                    for (int i = 0; i < intra_block_dims.size(); i++) {
+                        size_t cur_index = block.get_local_index(i);
+                        size_t dims = inter_block_range->get_dimensions(i);
+                        intra_block_dims[i] = (cur_index == dims - 1 &&
+                                               global_dimensions[i] - cur_index * stride < block_size) ?
+                                              global_dimensions[i] - cur_index * stride : block_size;
                     }
-                    if (preserve_sign) {
-                        if (*element > 0) {
-                            signs[element.get_offset()] = 1;
-                        } else if (*element == 0) {
-                            signs[element.get_offset()] = 0;
-                        } else if (*element < 0) {
-                            signs[element.get_offset()] = 2;
+
+                    intra_block_range->set_dimensions(intra_block_dims.begin(), intra_block_dims.end());
+                    intra_block_range->set_offsets(block.get_offset());
+                    intra_block_range->set_starting_position(block.get_local_index());
+                    auto intra_begin = intra_block_range->begin();
+                    auto intra_end = intra_block_range->end();
+                    for (auto element = intra_begin; element != intra_end; ++element) {
+                        int offset = element.get_offset();
+                        if (*element == bg_data) {
+                            if (use_bitmap) {
+                                bitmap[offset] = 1;
+                            } else {
+                                quant_inds[offset] = 2 * quantizer.get_radius() + 1;
+                            }
+                            tmp = my_lorenzo.predict(element);
+//                        tmp = 0;
+                            if (tmp >= low_range && tmp <= high_range) {
+                                *element = tmp;
+                            } else {
+//                        tmp = (low_range + high_range)/2;
+                                tmp = 0;
+                                *element = tmp;
+                            }
+                        }
+                        if (preserve_sign) {
+                            if (*element > 0) {
+                                signs[offset] = 1;
+                            } else if (*element == 0) {
+                                signs[offset] = 0;
+                            } else if (*element < 0) {
+                                signs[offset] = 2;
+                            }
                         }
                     }
                 }
@@ -92,7 +112,7 @@ namespace SZ {
 
 //            SZ::writefile("/Users/apple/Development/globus/cleanBG.bin", (float*)data, num_elements);
 //            printf("File cleanBG saved!\n");
-            std::array<size_t, N> intra_block_dims;
+
             predictor.precompress_data(inter_block_range->begin());
             quantizer.precompress_data();
             size_t quant_count = 0;
@@ -271,14 +291,14 @@ namespace SZ {
 //                            *element = bg;
                         }else {
                             T pred = predictor_withfallback->predict(element);
-                            if(fabs(pred - prediction_debug[offset]) > 0.02){
+                            if(fabs(pred - prediction_debug[offset]) > 0.002){
                                 // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
                                 printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
                                 exit(1);
                             }
                             *element = quantizer.recover(pred,
                                                          quant_inds[offset]);
-                            if( fabs(*element - element_debug[offset]) > 0.02) {
+                            if( fabs(*element - element_debug[offset]) > 0.002) {
                                 printf("offset: %d, *element=%.6f, debug_element=%.6f\n", offset, *element, element_debug[offset]);
                                 printf("offset: %d, pred=%.6f, debug_pred=%.6f\n", offset, pred, prediction_debug[offset]);
                                 printf("Quantization: %d\n", quant_inds[offset]-32768);

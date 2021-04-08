@@ -44,30 +44,75 @@ static void printData(float* data) {
 }
 
 int main(int argc, char **argv) {
-
+    bool FromFile = false;
+    std::vector<std::string> myargv;
+    if(argc==2) {
+        FromFile = true;
+        std::fstream f(argv[1], std::ios::in);
+        std::stringstream strStream;
+        strStream << f.rdbuf();
+        std::string tmp;
+        while(strStream >> tmp){
+            if(tmp[0]=='\"'){
+                std::string t=tmp.substr(1, tmp.size()-1);
+                do {
+                    strStream >> tmp;
+                    size_t a = tmp.find('\"');
+                    if(a !=std::string::npos){
+                        t += ' ' + tmp.substr(0, a);
+                        break;
+                    }
+                    t+=' ' + tmp;
+                } while(strStream);
+                myargv.push_back(t);
+            }else {
+                myargv.push_back(tmp);
+            }
+        }
+    }
     TCLAP::CmdLine cmd("SZ3 Compress/Decompress tests", ' ', "0.1");
-    TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",true,"","string");
-    TCLAP::ValueArg<std::string> outputFilePath("o", "output", "The compressed data output file path", true, "", "string");
+    TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
+    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
     TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
-    TCLAP::SwitchArg use_bitmapArg("m","bitmap","Whether to use the bitmap", cmd, false);
+    TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
     TCLAP::ValueArg<std::string> decFilePath("d", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
+    TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
 //    cmd.add(dimension);
     cmd.add(valueRange);
     cmd.add(decFilePath);
     cmd.add(logFilePath);
+    cmd.add(modeArg);
     try {
-        cmd.parse(argc, argv);
+        if(FromFile){
+            char** arr = new char*[myargv.size()+1];
+            arr[0] = new char[strlen(argv[0])+1];
+            strcpy(arr[0], argv[0]);
+            for(size_t i=0; i < myargv.size(); i++) {
+                arr[i+1] = new char[myargv[i].size()+1];
+                strcpy(arr[i+1], myargv[i].c_str());
+            }
+            cmd.parse(myargv.size()+1, arr);
+        }else {
+            cmd.parse(argc, argv);
+        }
     }catch (TCLAP::ArgException &e) {
         std::cerr<< "error: "<<e.error() <<" for arg " << e.argId() << std::endl;
         exit(10);
+    }
+    std::string mode = modeArg.getValue();
+    if(mode=="test" || mode=="compress"){
+        if(inputFilePath.getValue()=="") {
+            std::cerr << "ERROR: compress/test mode; must provide the original data file" << std::endl;
+            exit(10);
+        }
     }
     std::string ranges = valueRange.getValue();
     auto ebs = std::vector<SZ::RangeTuple<float>>();
@@ -85,49 +130,21 @@ int main(int argc, char **argv) {
         start = end+1;
         end = ranges.find(';', start);
     }
-    std::string inputFileStr = inputFilePath.getValue();
-    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
-    size_t num = 0;
-    auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
-    std::cout << "Read " << num << " elements\n";
-    std::cout << "Original Size: " << num*sizeof(float) << std::endl;
-    if(bigEndian.getValue()) { // convert big endian data
-        convert(data.get(), num);
-    }
 
-//    std::cout<<"special: "<< data[67396647]<<std::endl;
-//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//    float dp= data[67396647];
-//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -2.9);
-//    quantizer.recover(-2.9, tmp_quant);
-//    printf("tests!!!!!!");
-//    quantizer.quantize_and_overwrite(dp, 86.8644);
-//    printf("tests!!!!!!");
-//    exit(1);
-//    std::cout<<"special: "<< data[2318400]<<std::endl;
-//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//    float dp= data[2318400];
-//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -5.3000);
-//    quantizer.recover(-5.3000, tmp_quant);
-//    std::cout<<"special: "<< data[40237315]<<std::endl;
-//    auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//    float dp= data[40237315];
-//    int tmp_quant = quantizer.quantize_and_overwrite(dp, -0.239921);
-//    quantizer.recover(-0.239921, tmp_quant);
     float eb =eb_min;
-    float low_range = (*ebs.begin()).low, high_range = (*ebs.end()).high;
+    float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
     const size_t DIM = 3;
     auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
-    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.00001);
+    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.0001);
     std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
     predictors_.push_back(P_l);
     predictors_.push_back(P_reg);
 
-    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{69, 69, 33120});
+    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{  500, 500, 100});
     auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
             conf,
             SZ::ComposedPredictor<float, DIM>(predictors_),
@@ -144,68 +161,91 @@ int main(int argc, char **argv) {
             SZ::HuffmanEncoder<int>(),
             SZ::Lossless_zstd()
     );
+
     size_t compressed_size = 0;
-    // Change to use Cpp-style timer
-    // struct timespec start, end;
     std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
+    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
+    size_t num = 0;
+    std::string inputFileStr = inputFilePath.getValue();
+    if(mode == "test" || mode == "compress") {
+        auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+        std::cout << "Read " << num << " elements\n";
+        std::cout << "Original Size: " << num * sizeof(float) << std::endl;
+        if (bigEndian.getValue()) { // convert big endian data
+            convert(data.get(), num);
+        }
 
-
-    startTime = std::chrono::system_clock::now();
-    std::unique_ptr<unsigned char[]> compressed;
-    if(fallback) {
-        compressed.reset(sz_old.compress(data.get(), compressed_size));
-    } else if(!has_bg){
-        compressed.reset(sz.compress(data.get(), compressed_size));
-    }else {
-        compressed.reset(
-                sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap, preserve_sign,
-                                   false));
+        startTime = std::chrono::system_clock::now();
+        std::unique_ptr<unsigned char[]> compressed;
+        if (fallback) {
+            compressed.reset(sz_old.compress(data.get(), compressed_size));
+        } else if (!has_bg) {
+            compressed.reset(sz.compress(data.get(), compressed_size));
+        } else {
+            compressed.reset(
+                    sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
+                                       preserve_sign,
+                                       has_bg));
+        }
+        endTime = std::chrono::system_clock::now();
+        std::cout << "Compression time: "
+                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
+                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
+                     1000000000 << "s"
+                  << std::endl;
+        std::cout << "Compressed size = " << compressed_size << std::endl;
+        std::cout << "Compression Ratio = " << num * sizeof(float) / (float) compressed_size << std::endl;
+        SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
+        fs << outputFilePath.getValue() << " Compression Time: "
+           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+           << "s;"
+           << "Compression size: " << compressed_size << "; Compression ratio: "
+           << num * sizeof(float) / (float) compressed_size << "; ";
     }
-    endTime = std::chrono::system_clock::now();
-    std::cout << "Compression time: "
-              //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
-              << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
-              << std::endl;
-    std::cout << "Compressed size = " << compressed_size << std::endl;
-    std::cout << "Compression Ratio = " << num * sizeof (float)/ (float)compressed_size << std::endl;
-    SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
-    fs << outputFilePath.getValue() <<" Compression Time: " <<double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s;"
-        << "Compression size: " << compressed_size <<"; Compression ratio: "<<num * sizeof (float)/ (float)compressed_size<<"; ";
-
-    startTime = std::chrono::system_clock::now();
-//    err = clock_gettime(CLOCK_REALTIME, &start);
-    std::unique_ptr<float[]> dec_data;
-    if(fallback){
-        dec_data.reset(sz_old.decompress(compressed.get(), compressed_size));
-    }else if(!has_bg){
-        dec_data.reset(sz.decompress(compressed.get(), compressed_size));
-    }else {
-        dec_data.reset(sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
-                                            preserve_sign, false));
-    }
-    SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+    if(mode=="test" || mode=="decompress") {
+        auto compressed = SZ::readfile<unsigned char>(outputFilePath.getValue().c_str(), compressed_size);
+        startTime = std::chrono::system_clock::now();
+        std::unique_ptr<float[]> dec_data;
+        if (fallback) {
+            dec_data.reset(sz_old.decompress(compressed.get(), compressed_size));
+        } else if (!has_bg) {
+            dec_data.reset(sz.decompress(compressed.get(), compressed_size));
+        } else {
+            dec_data.reset(
+                    sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
+                                         preserve_sign, has_bg));
+        }
+        SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
 //    err = clock_gettime(CLOCK_REALTIME, &end);
-    endTime = std::chrono::system_clock::now();
-    std::cout << "Decompression time: "
-              //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
-              << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s"
-              << std::endl;
-    fs<<"Decompression Time: "<< double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count()) / 1000000000 << "s; ";
-//    printData(dec_data.get());
-    auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
-    if(bigEndian.getValue()) {
-        convert(dataV.get(), num);
-    }
-    float max_err = 0;
-    for (int i = 0; i < num; i++) {
-//        max_err = std::max(max_err, std::abs(data[i] - dec_data[i]));
-        if(dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
-            max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
-//            printf("NOTG data: %g, dec_data: %g, i:%d\n", dataV[i], dec_data[i], i);
+        endTime = std::chrono::system_clock::now();
+        std::cout << "Decompression time: "
+                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
+                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
+                     1000000000 << "s"
+                  << std::endl;
+        fs << "Decompression Time: "
+           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+           << "s; ";
+
+        if(mode=="test") {
+            auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
+            if (bigEndian.getValue()) {
+                convert(dataV.get(), num);
+            }
+            float max_err = 0;
+            std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
+            for (int i = 0; i < num; i++) {
+                if (!has_bg) {
+                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
+                }
+                if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
+                    max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
+                }
+            }
+            std::cout << "Max error = " << max_err << std::endl;
+            fs << "Max error = " << max_err << std::endl;
         }
     }
-    std::cout << "Max error = " << max_err << std::endl;
-    fs<<"Max error = " << max_err << std::endl;
     fs.close();
     return 0;
 }

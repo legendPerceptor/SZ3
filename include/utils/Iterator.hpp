@@ -153,6 +153,7 @@ namespace SZ {
                     if (local_index[i] < args[i] && range->whether_global_start_position(i)) return 0;
                     offset -= args[i] ? args[i] * range->global_dim_strides[i] : 0;
                 }
+//                if(offset<0) return 0;
                 return range->data[offset];
             }
 
