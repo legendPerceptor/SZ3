@@ -8,7 +8,7 @@
 #include <hdf5.h>
 //#include "sz.h"
 #include <H5PLextern.h>
-#include <SZ.hpp>
+#include "compressor/SZ_General_Compressor.hpp"
 
 #define H5Z_FILTER_SZ 32018
 #define MAX_CHUNK_SIZE 4294967295 //2^32-1
@@ -80,7 +80,7 @@ void init_dims_chunk(int dim, hsize_t dims[5], hsize_t chunk[5], size_t nbEle, s
 
 // SZ Old Functions
 int computeDimension(size_t r5, size_t r4, size_t r3, size_t r2, size_t r1);
-void H5Z_SZ3_Init(SZ::Compressor<float> *sz, SZ::Compressor<float> *sz_old);
+void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, SZ3_config_params & sz3conf);
 size_t computeDataLength(size_t r5, size_t r4, size_t r3, size_t r2, size_t r1);
 
 void longToBytes_bigEndian(unsigned char *b, unsigned long num);

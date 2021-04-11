@@ -1,6 +1,6 @@
 #find_package(HDF5 REQUIRED HINTS )
 add_library(
-        hdf5sz
+        hdf5sz SHARED
         H5Z_SZ3.cpp
         H5Z_SZ3.h
         sz_functions.cpp)
@@ -11,7 +11,7 @@ set(HDF5_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/vendors/hdf5-1.10.1/install/include)
 include_directories(${HDF5_INCLUDE_DIRS})
 
 target_link_libraries(
-        hdf5sz
+        hdf5sz # STATIC
         SZ3
         ${HDF5_LIBRARIES}
 )
@@ -22,10 +22,12 @@ target_link_libraries(
 #        $<INSTALL_INTERFACE:hdf5_sz>
 #)
 #
-#install(TARGETS hdf5sz EXPORT HDF5SZ
-#        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#        )
-#install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/hdf5_sz)
-#export(TARGETS hdf5sz FILE HDF5SZ.cmake)
+install(TARGETS hdf5sz EXPORT HDF5SZ
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/hdf5_sz)
+export(TARGETS hdf5sz SZ3 FILE HDF5SZ.cmake)
+
+

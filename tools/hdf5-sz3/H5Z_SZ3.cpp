@@ -48,7 +48,7 @@ static herr_t H5Z_sz_set_local(hid_t dcpl_id, hid_t type_id, hid_t chunk_space_i
 //        H5Z_SZ_Init(cfgFile);
 //    else
 //        H5Z_SZ_Init(NULL);
-    H5Z_SZ3_Init(sz3, sz_old);
+    H5Z_SZ3_Init(sz3, sz_old, sz3conf);
 
     SZ_TYPE dataType = SZ_FLOAT;
 
