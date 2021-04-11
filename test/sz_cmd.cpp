@@ -46,9 +46,20 @@ static void printData(float* data) {
 int main(int argc, char **argv) {
     bool FromFile = false;
     std::vector<std::string> myargv;
-    if(argc==2) {
+    if(argc<=2) {
         FromFile = true;
-        std::fstream f(argv[1], std::ios::in);
+        std::fstream f;
+        if(argc==2) {
+            f.open(argv[1], std::ios::in);
+        }else if(argc==1) {
+            f.open("sz3.config", std::ios::in);
+        }
+        if(f.fail()){
+            std::cerr<< "Please make sure the config file exists!\n "
+            << "Use commandline arguments or config file\n"
+            << "The default config file is sz3.config"<<std::endl;
+            exit(5);
+        }
         std::stringstream strStream;
         strStream << f.rdbuf();
         std::string tmp;
@@ -74,18 +85,19 @@ int main(int argc, char **argv) {
     TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
     TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
+    TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", true, "", "string");
     TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
-    TCLAP::ValueArg<std::string> decFilePath("d", "decFile", "The decompressed data file", true, "", "string");
+    TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
-//    cmd.add(dimension);
+    cmd.add(dimensionArg);
     cmd.add(valueRange);
     cmd.add(decFilePath);
     cmd.add(logFilePath);
@@ -131,6 +143,16 @@ int main(int argc, char **argv) {
         end = ranges.find(';', start);
     }
 
+    std::string dimsString = dimensionArg.getValue();
+    std::vector<size_t> dims;
+    {
+        std::stringstream ss;
+        ss << dimsString;
+        int tmp_dim;
+        while(ss >> tmp_dim) {
+            dims.push_back(tmp_dim);
+        }
+    }
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
     float bg = 1.0000000e+35;
@@ -138,29 +160,80 @@ int main(int argc, char **argv) {
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
     const size_t DIM = 3;
-    auto P_l = std::make_shared<SZ::LorenzoPredictor<float, DIM, 1>>(eb);
-    auto P_reg = std::make_shared<SZ::RegressionPredictor<float, DIM>>(6, 0.0001);
-    std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
-    predictors_.push_back(P_l);
-    predictors_.push_back(P_reg);
 
-    SZ::Config<float, DIM> conf(eb, std::array<size_t, DIM>{  500, 500, 100});
-    auto sz = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-            conf,
-            SZ::ComposedPredictor<float, DIM>(predictors_),
+
+
+    SZ::Compressor<float> *sz, *sz_old;
+    if(dims.size()==3) {
+        auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 3, 1>>(eb);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 3>>(6, 0.0001);
+        std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
+        predictors_.push_back(P_l);
+        predictors_.push_back(P_reg);
+        SZ::Config<float, 3> conf(eb, std::array<size_t, 3>{  dims[0], dims[1], dims[2]});
+        sz = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 3>(predictors_),
 //            SZ::LinearQuantizer<float>(eb),
-            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-            SZ::HuffmanEncoder<int>(),
-            SZ::Lossless_zstd()
-    );
-    auto sz_old = SZ::SZ_General_Compressor<float, DIM, SZ::ComposedPredictor<float, DIM>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-            conf,
-            SZ::ComposedPredictor<float, DIM>(predictors_),
-            SZ::LinearQuantizer<float>(eb),
+                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+        sz_old = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 3>(predictors_),
+                SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-            SZ::HuffmanEncoder<int>(),
-            SZ::Lossless_zstd()
-    );
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+    } else if(dims.size()==2) {
+        auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 2, 1>>(eb);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 2>>(6, 0.0001);
+        std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 2>>> predictors_;
+        predictors_.push_back(P_l);
+        predictors_.push_back(P_reg);
+        SZ::Config<float, 2> conf(eb, std::array<size_t, 2>{  dims[0], dims[1]});
+        sz = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 2>(predictors_),
+//            SZ::LinearQuantizer<float>(eb),
+                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+        sz_old = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 2>(predictors_),
+                SZ::LinearQuantizer<float>(eb),
+//            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+    } else if (dims.size()==1){
+        auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 1, 1>>(eb);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 1>>(6, 0.0001);
+        std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 1>>> predictors_;
+        predictors_.push_back(P_l);
+        predictors_.push_back(P_reg);
+        SZ::Config<float, 1> conf(eb, std::array<size_t, 1>{  dims[0]});
+        sz = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 1>(predictors_),
+//            SZ::LinearQuantizer<float>(eb),
+                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+        sz_old = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                conf,
+                SZ::ComposedPredictor<float, 1>(predictors_),
+                SZ::LinearQuantizer<float>(eb),
+//            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                SZ::HuffmanEncoder<int>(),
+                SZ::Lossless_zstd()
+        );
+    }
 
     size_t compressed_size = 0;
     std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
@@ -178,12 +251,12 @@ int main(int argc, char **argv) {
         startTime = std::chrono::system_clock::now();
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
-            compressed.reset(sz_old.compress(data.get(), compressed_size));
+            compressed.reset(sz_old->compress(data.get(), compressed_size));
         } else if (!has_bg) {
-            compressed.reset(sz.compress(data.get(), compressed_size));
+            compressed.reset(sz->compress(data.get(), compressed_size));
         } else {
             compressed.reset(
-                    sz.compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
+                    sz->compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                        preserve_sign,
                                        has_bg));
         }
@@ -207,12 +280,12 @@ int main(int argc, char **argv) {
         startTime = std::chrono::system_clock::now();
         std::unique_ptr<float[]> dec_data;
         if (fallback) {
-            dec_data.reset(sz_old.decompress(compressed.get(), compressed_size));
+            dec_data.reset(sz_old->decompress(compressed.get(), compressed_size));
         } else if (!has_bg) {
-            dec_data.reset(sz.decompress(compressed.get(), compressed_size));
+            dec_data.reset(sz->decompress(compressed.get(), compressed_size));
         } else {
             dec_data.reset(
-                    sz.decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
+                    sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                          preserve_sign, has_bg));
         }
         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);

@@ -15,8 +15,17 @@
 #include <encoder/HuffmanEncoder.hpp>
 
 namespace SZ {
+    template <class T>
+    class Compressor {
+    public:
+        virtual uchar *compress_withBG(T *data, size_t &compressed_size, T bg_data, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false, bool has_bg=false) = 0;
+        virtual T *decompress_withBG(uchar const *lossless_compressed_data, size_t length, T bg, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false,bool has_bg=false) = 0;
+        virtual uchar *compress(T *data, size_t &compressed_size) =0;
+        virtual T *decompress(uchar const *lossless_compressed_data, size_t length)=0;
+    };
+
     template<class T, size_t N, class Predictor, class Quantizer, class Encoder, class Lossless>
-    class SZ_General_Compressor {
+    class SZ_General_Compressor: public Compressor<T> {
     public:
 
 
