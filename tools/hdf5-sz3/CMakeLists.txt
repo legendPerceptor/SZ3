@@ -5,8 +5,13 @@ add_library(
         H5Z_SZ3.h
         sz_functions.cpp)
 
+#set(HDF5_DIR ${PROJECT_SOURCE_DIR}/vendors/hdf5-1.10.1/install)
+#find_package(HDF5)
 set(HDF5_LIBRARIES ${PROJECT_SOURCE_DIR}/vendors/hdf5-1.10.1/install/lib/libhdf5.dylib)
 set(HDF5_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/vendors/hdf5-1.10.1/install/include)
+message("HDF5LIB PATH:" ${HDF5_LIBRARIES})
+message("HDF5INCLUDE PATH:" ${HDF5_INCLUDE_DIRS})
+#message("CMAKE MODULEPATH:" ${CMAKE_MODULE_PATH})
 #include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/vendors/tclap-1.4.0-rc1/include)
 include_directories(${HDF5_INCLUDE_DIRS})
 

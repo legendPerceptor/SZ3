@@ -34,7 +34,7 @@ const void *H5PLget_plugin_info(void) {return H5Z_SZ;}
 
 static herr_t H5Z_sz_set_local(hid_t dcpl_id, hid_t type_id, hid_t chunk_space_id)
 {
-    printf("start in H5Z_sz_set_local, dcpl_id = %d\n", dcpl_id);
+    printf("start in H5Z_sz_set_local, dcpl_id = %lld\n", dcpl_id);
     size_t r5=0,r4=0,r3=0,r2=0,r1=0, dsize;
     static char const *_funcname_ = "H5Z_sz_set_local";
     int i, ndims, ndims_used = 0;
@@ -303,9 +303,9 @@ void SZ_cdArrayToMetaData(size_t cd_nelmts, const unsigned int cd_values[], int*
 
 static size_t H5Z_filter_sz(unsigned int flags, size_t cd_nelmts, const unsigned int cd_values[], size_t nbytes, size_t* buf_size, void** buf)
 {
-    printf("start in H5Z_filter_sz, cd_nelmts=%d\n", cd_nelmts);
+    printf("start in H5Z_filter_sz, cd_nelmts=%zu\n", cd_nelmts);
     //H5Z_SZ_Init_Default();
-    H5Z_SZ3_Init(sz3, sz_old, sz3conf);
+
 
     size_t r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0;
     int dimSize = 0, dataType = 0;
@@ -317,9 +317,10 @@ static size_t H5Z_filter_sz(unsigned int flags, size_t cd_nelmts, const unsigned
 
     size_t nbEle = computeDataLength(r5, r4, r3, r2, r1);
 
-
     if(nbEle < 200)
         return nbytes;
+    printf("In H5Z_SZ3.cpp, dimensions: r5=%zu, r4=%zu, r3=%zu, r2=%zu, r1=%zu\n", r5,r4,r3,r2,r1);
+    H5Z_SZ3_Init(sz3, sz_old, sz3conf, r3, r2, r1);
 
     if (flags & H5Z_FLAG_REVERSE)
     {

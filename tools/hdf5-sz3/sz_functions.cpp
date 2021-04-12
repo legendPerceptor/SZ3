@@ -169,7 +169,7 @@ size_t computeDataLength(size_t r5, size_t r4, size_t r3, size_t r2, size_t r1)
 }
 
 
-void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, SZ3_config_params & sz3conf) {
+void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, SZ3_config_params & sz3conf, int r3, int r2, int r1) {
     std::vector<std::string> myargv;
     bool FromFile;
     FromFile = true;
@@ -206,7 +206,7 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
 //    TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
 //    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
-    TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", true, "", "string");
+//    TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", true, "", "string");
     TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
@@ -218,8 +218,9 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
 //    TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
 //    cmd.add(inputFilePath);
 //    cmd.add(outputFilePath);
-    cmd.add(dimensionArg);
+//    cmd.add(dimensionArg);
     cmd.add(valueRange);
+    cmd.add(hasBackgroundData);
 //    cmd.add(decFilePath);
     cmd.add(logFilePath);
 //    cmd.add(modeArg);
@@ -232,6 +233,10 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
             strcpy(arr[i+1], myargv[i].c_str());
         }
         cmd.parse(myargv.size()+1, arr);
+        for(size_t i=0; i<myargv.size()+1; i++) {
+            delete arr[i];
+        }
+        delete[]arr;
     }catch (TCLAP::ArgException &e) {
         std::cerr<< "error: "<<e.error() <<" for arg " << e.argId() << std::endl;
         exit(10);
@@ -254,16 +259,20 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
         end = ranges.find(';', start);
     }
 
-    std::string dimsString = dimensionArg.getValue();
+//    std::string dimsString = dimensionArg.getValue();
     std::vector<size_t> dims;
-    {
-        std::stringstream ss;
-        ss << dimsString;
-        int tmp_dim;
-        while(ss >> tmp_dim) {
-            dims.push_back(tmp_dim);
-        }
-    }
+//    {
+//        std::stringstream ss;
+//        ss << dimsString;
+//        int tmp_dim;
+//        while(ss >> tmp_dim) {
+//            dims.push_back(tmp_dim);
+//        }
+//    }
+    printf("The dimensions are r1=%d, r2=%d, r3=%d;\n", r1, r2, r3);
+    if(r1!=0){dims.push_back(r1);}
+    if(r2!=0){dims.push_back(r2);}
+    if(r3!=0){dims.push_back(r3);}
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
     float bg = hasBackgroundData.getValue();
