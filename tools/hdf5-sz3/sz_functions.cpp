@@ -226,7 +226,7 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
     try {
         char** arr = new char*[myargv.size()+1];
         arr[0] = new char[4];
-        strcpy(arr[0], "no2\0");
+        strcpy(arr[0], "n\0");
         for(size_t i=0; i < myargv.size(); i++) {
             arr[i+1] = new char[myargv[i].size()+1];
             strcpy(arr[i+1], myargv[i].c_str());
