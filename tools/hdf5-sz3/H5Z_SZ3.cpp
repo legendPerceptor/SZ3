@@ -13,6 +13,8 @@
 #include "H5Z_SZ3.h"
 
 #include <compressor/SZ_General_Compressor.hpp>
+#include <random>
+#include <sstream>
 
 static SZ::Compressor<float> *sz3, *sz_old;
 static SZ3_config_params sz3conf;
@@ -359,6 +361,12 @@ static size_t H5Z_filter_sz(unsigned int flags, size_t cd_nelmts, const unsigned
             float* data = (float*)(*buf);
             unsigned char *bytes = nullptr;
             if(sz3conf.fallback) {
+//                std::random_device rd;  //Will be used to obtain a seed for the random number engine
+//                std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
+//                std::uniform_real_distribution<> dis(0, 100000000);
+//                std::stringstream ss;
+//                ss << "QW-"<<dis(gen) << ".szt3";
+//                SZ::writefile(ss.str().data(), data, r1);
                 bytes = sz_old->compress(data, outSize);
             } else if(!sz3conf.has_bg) {
                 bytes = sz3->compress(data, outSize);

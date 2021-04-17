@@ -339,17 +339,17 @@ void H5Z_SZ3_Init(SZ::Compressor<float> *& sz, SZ::Compressor<float>*& sz_old, S
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
         SZ::Config<float, 1> conf(eb, std::array<size_t, 1>{  dims[0]});
-        sz = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+        sz = new SZ::SZ_General_Compressor<float, 1, SZ::LorenzoPredictor<float, 1,1>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
                 conf,
-                SZ::ComposedPredictor<float, 1>(predictors_),
+                SZ::LorenzoPredictor<float, 1,1>(eb),
 //            SZ::LinearQuantizer<float>(eb),
                 SZ::MultipleErrorBoundsQuantizer<float>(ebs),
                 SZ::HuffmanEncoder<int>(),
                 SZ::Lossless_zstd()
         );
-        sz_old = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+        sz_old = new SZ::SZ_General_Compressor<float, 1, SZ::LorenzoPredictor<float, 1, 1>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
                 conf,
-                SZ::ComposedPredictor<float, 1>(predictors_),
+                SZ::LorenzoPredictor<float, 1,1>(eb),
                 SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
                 SZ::HuffmanEncoder<int>(),
