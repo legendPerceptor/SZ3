@@ -494,7 +494,7 @@ namespace SZ {
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize(T data, T pred){
-        data = fmin(fmax(global_min+1.1*EPSILON, data), global_max-1.1*EPSILON);
+        data = fmin(fmax(global_min, data), global_max);
 //        pred = fmin(fmax(global_min, pred), global_max);
         auto t = quantize_actual(data, pred);
         return t.b;
@@ -502,7 +502,7 @@ namespace SZ {
 
     template<class T>
     int MultipleErrorBoundsQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
-        data = fmin(fmax(global_min+1.1*EPSILON, data), global_max-1.1*EPSILON);
+        data = fmin(fmax(global_min, data), global_max);
 //        pred = fmin(fmax(global_min, pred), global_max);
         auto t = quantize_actual(data, pred);
         data = t.a;
