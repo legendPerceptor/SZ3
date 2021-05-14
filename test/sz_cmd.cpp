@@ -247,7 +247,12 @@ int main(int argc, char **argv) {
         if (bigEndian.getValue()) { // convert big endian data
             convert(data.get(), num);
         }
-
+//        std::cout<<"special: "<< data[5324929]<<std::endl;
+//        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//        float dp= data[5324929];
+//        int tmp_quant = quantizer.quantize_and_overwrite(dp, 0.7888);
+//        float dp2 = quantizer.recover(0.7888, tmp_quant);
+//        printf("tests!!!!!!");
         startTime = std::chrono::system_clock::now();
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
