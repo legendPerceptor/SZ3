@@ -247,11 +247,16 @@ int main(int argc, char **argv) {
         if (bigEndian.getValue()) { // convert big endian data
             convert(data.get(), num);
         }
-//        std::cout<<"special: "<< data[5324929]<<std::endl;
+        std::cout<<"special before global range: "<<data[13696844]<<std::endl;
+        for(int i=0;i<num;i++){
+            data[i] = fmin(fmax(low_range, data[i]), high_range);
+        }
+        std::cout<<"special after global range: "<<data[13696844]<<std::endl;
+//        std::cout<<"special: "<< data[95815061]<<std::endl;
 //        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//        float dp= data[5324929];
-//        int tmp_quant = quantizer.quantize_and_overwrite(dp, 0.7888);
-//        float dp2 = quantizer.recover(0.7888, tmp_quant);
+//        float dp= data[95815061];
+//        int tmp_quant = quantizer.quantize_and_overwrite(dp, 0.054161);
+//        float dp2 = quantizer.recover(0.054161, tmp_quant);
 //        printf("tests!!!!!!");
         startTime = std::chrono::system_clock::now();
         std::unique_ptr<unsigned char[]> compressed;
@@ -313,9 +318,9 @@ int main(int argc, char **argv) {
             float max_err = 0;
             std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
             for (int i = 0; i < num; i++) {
-                if (!has_bg) {
+//                if (!has_bg) {
                     dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
-                }
+//                }
                 if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
                     max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
                 }

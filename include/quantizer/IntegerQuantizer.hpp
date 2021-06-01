@@ -399,6 +399,9 @@ namespace SZ {
             decompressed_data = ebs[data_index].high-ebs[data_index].eb - tmp * (2*ebs[data_index].eb);
             if(decompressed_data < ebs[data_index].low){
                 decompressed_data = ebs[data_index].low + ebs[data_index].eb;
+                if(tmp==quant_range[data_index]){
+                    tmp-=1;
+                }
             }
             quant_value -= tmp+1;//Add one more quantization value
             quant_index_shifted = this->radius + quant_value;
@@ -416,6 +419,9 @@ namespace SZ {
             decompressed_data = ebs[data_index].low+ebs[data_index].eb + tmp * (2*ebs[data_index].eb);
             if(decompressed_data > ebs[data_index].high){
                 decompressed_data = ebs[data_index].high - ebs[data_index].eb;
+                if(tmp==quant_range[data_index]){
+                    tmp-=1;
+                }
             }
             quant_value += tmp+1;
             quant_index_shifted = this->radius + quant_value;

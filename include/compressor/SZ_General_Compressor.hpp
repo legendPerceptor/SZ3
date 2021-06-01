@@ -300,14 +300,14 @@ namespace SZ {
 //                            *element = bg;
                         }else {
                             T pred = predictor_withfallback->predict(element);
-                            if(fabs(pred - prediction_debug[offset])>0.00001){
+                            if(fabs(pred - prediction_debug[offset])>0.000001){
                                 // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
                                 printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
                                 exit(1);
                             }
                             *element = quantizer.recover(pred,
                                                          quant_inds[offset]);
-                            if( fabs(*element - element_debug[offset])>0.00001) {
+                            if( fabs(*element - element_debug[offset])>0.000001) {
                                 printf("offset: %d, *element=%.6f, debug_element=%.6f\n", offset, *element, element_debug[offset]);
                                 printf("offset: %d, pred=%.6f, debug_pred=%.6f\n", offset, pred, prediction_debug[offset]);
                                 printf("Quantization: %d\n", quant_inds[offset]-32768);
