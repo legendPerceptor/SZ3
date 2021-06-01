@@ -366,8 +366,8 @@ namespace SZ {
     template<class T>
     tuple2<T, int> MultipleErrorBoundsQuantizer<T>::quantize_actual(T data, T pred) {
         // The function returns 0,1 or unshifted quantization value
-        int tp = round(pred/EPSILON);
-        pred = (T)tp * EPSILON;
+//        int tp = round(pred/EPSILON);
+//        pred = (T)tp * EPSILON;
         int pred_index = getErrorBoundIndex(pred, true);
         if(fabs(ebs[pred_index].high-pred)<EPSILON){
             pred = ebs[pred_index].high;

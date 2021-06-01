@@ -36,8 +36,8 @@ namespace SZ {
                 block_size(conf.block_size), stride(conf.stride),
                 global_dimensions(conf.dims), num_elements(conf.num),
                 my_lorenzo(LorenzoPredictor<T, N, 1>(conf.eb)){
-//            prediction_debug = std::vector<T>(num_elements);
-//            element_debug = std::vector<T>(num_elements);
+            prediction_debug = std::vector<T>(num_elements);
+            element_debug = std::vector<T>(num_elements);
             static_assert(std::is_base_of_v<concepts::PredictorInterface<T, N>, Predictor>,
                           "must implement the predictor interface");
             static_assert(std::is_base_of_v<concepts::QuantizerInterface<T>, Quantizer>, "must implement the quatizer interface");
@@ -158,10 +158,10 @@ namespace SZ {
                             *element = predictor_withfallback->predict(element);
                         } else {
                             T pred = predictor_withfallback->predict(element);
-//                            prediction_debug[offset] = pred;
+                            prediction_debug[offset] = pred;
                             quant_inds[offset] = quantizer.quantize_and_overwrite(
                                     *element, pred);
-//                            element_debug[offset] = *element;
+                            element_debug[offset] = *element;
                             quant_count++;
                         }
                     }
@@ -300,19 +300,19 @@ namespace SZ {
 //                            *element = bg;
                         }else {
                             T pred = predictor_withfallback->predict(element);
-//                            if(fabs(pred - prediction_debug[offset]) > 0.002){
-//                                // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
-//                                printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
-//                                exit(1);
-//                            }
+                            if(fabs(pred - prediction_debug[offset])>0.00001){
+                                // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
+                                printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
+                                exit(1);
+                            }
                             *element = quantizer.recover(pred,
                                                          quant_inds[offset]);
-//                            if( fabs(*element - element_debug[offset]) > 0.002) {
-//                                printf("offset: %d, *element=%.6f, debug_element=%.6f\n", offset, *element, element_debug[offset]);
-//                                printf("offset: %d, pred=%.6f, debug_pred=%.6f\n", offset, pred, prediction_debug[offset]);
-//                                printf("Quantization: %d\n", quant_inds[offset]-32768);
-//                                exit(2);
-//                            }
+                            if( fabs(*element - element_debug[offset])>0.00001) {
+                                printf("offset: %d, *element=%.6f, debug_element=%.6f\n", offset, *element, element_debug[offset]);
+                                printf("offset: %d, pred=%.6f, debug_pred=%.6f\n", offset, pred, prediction_debug[offset]);
+                                printf("Quantization: %d\n", quant_inds[offset]-32768);
+                                exit(2);
+                            }
                         }
                     }
                 }
@@ -509,7 +509,7 @@ namespace SZ {
         uint stride;
         size_t num_elements;
         std::array<size_t, N> global_dimensions;
-//        std::vector<T> prediction_debug, element_debug;
+        std::vector<T> prediction_debug, element_debug;
 
     };
 
