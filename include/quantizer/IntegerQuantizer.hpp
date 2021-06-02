@@ -372,7 +372,10 @@ namespace SZ {
         T decompressed_data;
         int tmp;
 //        assert(pred_index == data_index);
-        if(pred_index == data_index){
+        if(fabs(diff) < ebs[data_index].eb){
+            decompressed_data = pred;
+            quant_index_shifted = this->radius;
+        }else if(pred_index == data_index){
             T error_bound = ebs[data_index].eb;
             T error_bound_reciprocal = 1/error_bound;
             int quant = (int)round(diff *(error_bound_reciprocal*0.5));
@@ -396,11 +399,13 @@ namespace SZ {
             }else {
                 tmp = (int) round((ebs[data_index].high - ebs[data_index].eb - data) / (2 * ebs[data_index].eb));
             }
-            decompressed_data = ebs[data_index].high-ebs[data_index].eb - tmp * (2*ebs[data_index].eb);
+            decompressed_data = ebs[data_index].high-ebs[data_index].eb + (-tmp) * (2*ebs[data_index].eb);
             if(decompressed_data < ebs[data_index].low){
-                decompressed_data = ebs[data_index].low + ebs[data_index].eb;
                 if(tmp==quant_range[data_index]){
                     tmp-=1;
+                    decompressed_data = ebs[data_index].high-ebs[data_index].eb + (-tmp) * (2*ebs[data_index].eb);
+                } else {
+                    decompressed_data = ebs[data_index].low + ebs[data_index].eb;
                 }
             }
             quant_value -= tmp+1;//Add one more quantization value
@@ -418,9 +423,11 @@ namespace SZ {
             }
             decompressed_data = ebs[data_index].low+ebs[data_index].eb + tmp * (2*ebs[data_index].eb);
             if(decompressed_data > ebs[data_index].high){
-                decompressed_data = ebs[data_index].high - ebs[data_index].eb;
                 if(tmp==quant_range[data_index]){
                     tmp-=1;
+                    ebs[data_index].low+ebs[data_index].eb + tmp * (2*ebs[data_index].eb);
+                }else {
+                    decompressed_data = ebs[data_index].high - ebs[data_index].eb;
                 }
             }
             quant_value += tmp+1;

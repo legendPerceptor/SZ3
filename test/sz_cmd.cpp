@@ -247,16 +247,16 @@ int main(int argc, char **argv) {
         if (bigEndian.getValue()) { // convert big endian data
             convert(data.get(), num);
         }
-        std::cout<<"special before global range: "<<data[13696844]<<std::endl;
+        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
         for(int i=0;i<num;i++){
             data[i] = fmin(fmax(low_range, data[i]), high_range);
         }
-        std::cout<<"special after global range: "<<data[13696844]<<std::endl;
-//        std::cout<<"special: "<< data[95815061]<<std::endl;
+//        std::cout<<"special after global range: "<<data[13692013]<<std::endl;
+//        std::cout<<"special: "<< data[13692013]<<std::endl;
 //        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//        float dp= data[95815061];
-//        int tmp_quant = quantizer.quantize_and_overwrite(dp, 0.054161);
-//        float dp2 = quantizer.recover(0.054161, tmp_quant);
+//        float dp= data[13692013];
+//        int tmp_quant = quantizer.quantize_and_overwrite(dp, -4.921669006);
+//        float dp2 = quantizer.recover(-4.921669006, tmp_quant);
 //        printf("tests!!!!!!");
         startTime = std::chrono::system_clock::now();
         std::unique_ptr<unsigned char[]> compressed;
