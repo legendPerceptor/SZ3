@@ -247,10 +247,10 @@ int main(int argc, char **argv) {
         if (bigEndian.getValue()) { // convert big endian data
             convert(data.get(), num);
         }
-        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
-        for(int i=0;i<num;i++){
-            data[i] = fmin(fmax(low_range, data[i]), high_range);
-        }
+//        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
+//        for(int i=0;i<num;i++){
+//            data[i] = fmin(fmax(low_range, data[i]), high_range);
+//        }
 //        std::cout<<"special after global range: "<<data[13692013]<<std::endl;
 //        std::cout<<"special: "<< data[13692013]<<std::endl;
 //        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
@@ -317,14 +317,48 @@ int main(int argc, char **argv) {
             }
             float max_err = 0;
             std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
+            float *rmse = new float [ebs.size()];
+            memset(rmse,0,sizeof(float)*ebs.size());
+            float *psnr = new float[ebs.size()];
+            memset(psnr,0,sizeof(float)*ebs.size());
+            float dmin=10000,dmax=-10000;
+            int *nums = new int[ebs.size()];
+            memset(nums, 0, sizeof(int)*ebs.size());
             for (int i = 0; i < num; i++) {
 //                if (!has_bg) {
-                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
+//                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
 //                }
+                if(dataV[i]>dmax){
+                    dmax=dataV[i];
+                }
+                if(dataV[i]<dmin){
+                    dmin=dataV[i];
+                }
+                for(int j=0;j<ebs.size();j++) {
+                    if (dataV[i] >= ebs[j].low && dataV[i] <= ebs[j].high) {
+                        nums[j]++;
+                    }
+                }
+            }
+            for (int i=0;i<num;i++){
+                for(int j=0;j<ebs.size();j++) {
+                    if(dataV[i]>= ebs[j].low && dataV[i] <= ebs[j].high) {
+                        float diff = dataV[i] - dec_data[i];
+                        float t = diff*diff/nums[j];
+                        rmse[j] += t;
+                    }
+                }
                 if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
                     max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
                 }
             }
+            for(int j=0;j<ebs.size();j++){
+                psnr[j] = 20 * log10(dmax-dmin) - 10 * log10(rmse[j]);
+                rmse[j] = sqrt(rmse[j]);
+                std::cout<<"[" << ebs[j].low << ", "<<ebs[j].high<<"] RMSE: "<<rmse[j]<< ", PSNR: "<< psnr[j]<<std::endl;
+            }
+            delete [] rmse;
+            delete [] psnr;
             std::cout << "Max error = " << max_err << std::endl;
             fs << "Max error = " << max_err << std::endl;
         }
