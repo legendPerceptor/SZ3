@@ -19,3 +19,7 @@ target_link_libraries(sz_decompress_test SZ3 ${ZSTD_LIBS})
 add_executable(sz_cmd sz_cmd.cpp)
 target_include_directories(sz_cmd PRIVATE ${PROJECT_SOURCE_DIR}/include ${ZSTD_INCLUDES})
 target_link_libraries(sz_cmd SZ3 ${ZSTD_LIBS})
+
+add_executable(test_sz_parallel parallel_liu.cpp)
+target_include_directories(test_sz_parallel PRIVATE ${PROJECT_SOURCE_DIR}/include ${ZSTD_INCLUDES} ${MPI_INCLUDE_PATH})
+target_link_libraries(test_sz_parallel SZ3 ${ZSTD_LIBS} ${MPI_C_LIBRARIES})

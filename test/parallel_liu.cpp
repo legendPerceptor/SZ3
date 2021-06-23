@@ -1,6 +1,19 @@
 //
-// Created by apple on 2021/3/23.
+// Created by apple on 2021/6/24.
 //
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <tclap/CmdLine.h>
+#include <sstream>
 
 #include <quantizer/IntegerQuantizer.hpp>
 #include <compressor/SZ_General_Compressor.hpp>
@@ -10,20 +23,15 @@
 #include <lossless/Lossless_zstd.hpp>
 #include <utils/Iterator.hpp>
 #include <utils/FileUtil.h>
-#include <cstdio>
-#include <iostream>
-#include <cmath>
-#include <memory>
-#include <chrono>
-#include <tclap/CmdLine.h>
-#include <fstream>
+#include "mpi.h"
 
-//namespace fs = std::filesystem;
+
 static void convert(float* data, int num) {
     float t;
     char *bytes;
     for(int i=0;i<num;i++) {
         bytes = (char*)&data[i];
+//        t = bytes[3] | (bytes[2] << 24) | (bytes[1] << 16) | (bytes[0] << 8);
         t = bytes[3];
         bytes[3] = bytes[0];
         bytes[0] = t;
@@ -32,18 +40,8 @@ static void convert(float* data, int num) {
         bytes[1] = t;
     }
 }
-static void printData(float* data) {
-    int z =1;
-    printf("special %g\n", data[9098138]);
-    for (int y=0; y< 100; y++) {
-        for(int x=0;x<500;x++){
-            printf("%g  ",data[x + 500*(y+500*z)]);
-        }
-        printf("\n");
-    }
-}
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     bool FromFile = false;
     std::vector<std::string> myargv;
     if(argc<=2) {
@@ -56,8 +54,8 @@ int main(int argc, char **argv) {
         }
         if(f.fail()){
             std::cerr<< "Please make sure the config file exists!\n "
-            << "Use commandline arguments or config file\n"
-            << "The default config file is sz3.config"<<std::endl;
+                     << "Use commandline arguments or config file\n"
+                     << "The default config file is sz3.config"<<std::endl;
             exit(5);
         }
         std::stringstream strStream;
@@ -161,7 +159,20 @@ int main(int argc, char **argv) {
     bool use_bitmap = use_bitmapArg.getValue();
     const size_t DIM = 3;
 
+    // MPI Initialization
+    MPI_Init(NULL, NULL);
 
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    if (world_rank == 0) printf ("Start parallel compressing ... \n");
+    if (world_rank == 0) printf("size: %d\n", world_size);
+    double costReadOri = 0.0, costReadZip = 0.0, costWriteZip = 0.0, costWriteOut = 0.0, costComp = 0.0, costDecomp = 0.0;
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     SZ::Compressor<float> *sz, *sz_old;
     if(dims.size()==3) {
@@ -236,58 +247,98 @@ int main(int argc, char **argv) {
     }
 
     size_t compressed_size = 0;
-    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
+//    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
+    double startTime, endTime;
     std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
-    size_t num = 0;
     std::string inputFileStr = inputFilePath.getValue();
+    float *dataIn;
+    size_t num = 0;
+    char zip_filename[100];
+    sprintf(zip_filename,"%s",outputFilePath.getValue().c_str());
     if(mode == "test" || mode == "compress") {
-        auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
-        std::cout << "Read " << num << " elements\n";
-        std::cout << "Original Size: " << num * sizeof(float) << std::endl;
-        if (bigEndian.getValue()) { // convert big endian data
-            convert(data.get(), num);
+        if (world_rank == 0) {
+            startTime = MPI_Wtime();
+            auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+            if (bigEndian.getValue()) { // convert big endian data
+                convert(data.get(), num);
+            }
+            endTime = MPI_Wtime();
+            std::cout << "Read " << num << " elements\n";
+            std::cout << "Original Size: " << num * sizeof(float) << std::endl;
+            std::cout << "RAW File read time: "<< endTime-startTime << std::endl;
+            startTime = MPI_Wtime();
+            dataIn = data.get();
+            MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+            MPI_Bcast(data.get(), num, MPI_FLOAT, 0, MPI_COMM_WORLD);
+            endTime = MPI_Wtime();
+            std::cout << "RAW file broadcast time: " << endTime - startTime << std::endl;
+        } else {
+            MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+            dataIn = (float *) malloc(num * sizeof(float));
+            MPI_Bcast(dataIn, num, MPI_FLOAT, 0, MPI_COMM_WORLD);
         }
-//        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
-//        for(int i=0;i<num;i++){
-//            data[i] = fmin(fmax(low_range, data[i]), high_range);
-//        }
-//        std::cout<<"special after global range: "<<data[13692013]<<std::endl;
-//        std::cout<<"special: "<< data[13692013]<<std::endl;
-//        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
-//        float dp= data[13692013];
-//        int tmp_quant = quantizer.quantize_and_overwrite(dp, -4.921669006);
-//        float dp2 = quantizer.recover(-4.921669006, tmp_quant);
-//        printf("tests!!!!!!");
-        startTime = std::chrono::system_clock::now();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0){
+            endTime = MPI_Wtime();
+            costReadOri += endTime - startTime;
+        }
+        //Compress Input Data
+        size_t out_size;
+        if (world_rank == 0) printf ("Compressing %s\n", inputFileStr.c_str());
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0) startTime = MPI_Wtime();
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
-            compressed.reset(sz_old->compress(data.get(), compressed_size));
+            compressed.reset(sz_old->compress(dataIn, compressed_size));
         } else if (!has_bg) {
-            compressed.reset(sz->compress(data.get(), compressed_size));
+            compressed.reset(sz->compress(dataIn, compressed_size));
         } else {
             compressed.reset(
-                    sz->compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
-                                       preserve_sign,
-                                       has_bg));
+                    sz->compress_withBG(dataIn, compressed_size, bg, low_range, high_range, use_bitmap,
+                                        preserve_sign,
+                                        has_bg));
         }
-        endTime = std::chrono::system_clock::now();
-        std::cout << "Compression time: "
-                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
-                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
-                     1000000000 << "s"
-                  << std::endl;
-        std::cout << "Compressed size = " << compressed_size << std::endl;
-        std::cout << "Compression Ratio = " << num * sizeof(float) / (float) compressed_size << std::endl;
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0) {
+            endTime = MPI_Wtime();
+            costComp += endTime - startTime;
+        }
+        // No need to free dataIn because it is a unique_ptr
+        struct stat st = {0};
+        if (stat("/lcrc/globalscratch/yuanjian", &st) == -1) {
+            mkdir("/lcrc/globalscratch/yuanjian", 0777);
+        }
+
+        int folder_index = world_rank;
+        sprintf(zip_filename, "%s/kai_%d_%d.out", "/lcrc/globalscratch/yuanjian", folder_index, rand());
+        //Write compressed data
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
+        if(world_rank == 0) startTime = MPI_Wtime();
         SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
-        fs << outputFilePath.getValue() << " Compression Time: "
-           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
-           << "s;"
-           << "Compression size: " << compressed_size << "; Compression ratio: "
-           << num * sizeof(float) / (float) compressed_size << "; ";
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0){
+            endTime = MPI_Wtime();
+            costWriteZip += endTime - startTime;
+        }
     }
     if(mode=="test" || mode=="decompress") {
-        auto compressed = SZ::readfile<unsigned char>(outputFilePath.getValue().c_str(), compressed_size);
-        startTime = std::chrono::system_clock::now();
+        // Read Compressed Data
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (world_rank == 0) printf("read compressed file from disk %s \n", zip_filename);
+        if(world_rank == 0) startTime = MPI_Wtime();
+        auto compressed = SZ::readfile<unsigned char>(zip_filename, compressed_size);
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0){
+            endTime = MPI_Wtime();
+            costReadZip += endTime - startTime;
+        }
+        // delete the compressed file
+        remove(zip_filename);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (world_rank == 0) printf("decompress field\n");
+        if(world_rank == 0) startTime = MPI_Wtime();
         std::unique_ptr<float[]> dec_data;
         if (fallback) {
             dec_data.reset(sz_old->decompress(compressed.get(), compressed_size));
@@ -296,79 +347,25 @@ int main(int argc, char **argv) {
         } else {
             dec_data.reset(
                     sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
-                                         preserve_sign, has_bg));
+                                          preserve_sign, has_bg));
         }
-        SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
-//    err = clock_gettime(CLOCK_REALTIME, &end);
-        endTime = std::chrono::system_clock::now();
-        std::cout << "Decompression time: "
-                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
-                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
-                     1000000000 << "s"
-                  << std::endl;
-        fs << "Decompression Time: "
-           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
-           << "s; ";
-
-        if(mode=="test") {
-            auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
-            if (bigEndian.getValue()) {
-                convert(dataV.get(), num);
-            }
-            float max_err = 0;
-            std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
-            float *rmse = new float [ebs.size()];
-            memset(rmse,0,sizeof(float)*ebs.size());
-            float *psnr = new float[ebs.size()];
-            memset(psnr,0,sizeof(float)*ebs.size());
-            float dmin=10000,dmax=-10000;
-            int *nums = new int[ebs.size()];
-            memset(nums, 0, sizeof(int)*ebs.size());
-            for (int i = 0; i < num; i++) {
-//                if (!has_bg) {
-//                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
-//                }
-                if(dataV[i]>dmax){
-                    dmax=dataV[i];
-                }
-                if(dataV[i]<dmin){
-                    dmin=dataV[i];
-                }
-                for(int j=0;j<ebs.size();j++) {
-                    if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
-                        nums[j]++;
-                        break;
-                    }
-                }
-            }
-            int sum=0;
-            for(int j=0;j<ebs.size();j++) {
-                sum+=nums[j];
-            }
-            std::cout<<"total num: "<<sum<<std::endl;
-            for (int i=0;i<num;i++){
-                for(int j=0;j<ebs.size();j++) {
-                    if(dataV[i]>= ebs[j].low && dataV[i] < ebs[j].high) {
-                        float diff = dataV[i] - dec_data[i];
-                        float t = diff*diff/nums[j];
-                        rmse[j] += t;
-                    }
-                }
-                if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
-                    max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
-                }
-            }
-            for(int j=0;j<ebs.size();j++){
-                psnr[j] = 20 * log10(dmax-dmin) - 10 * log10(rmse[j]);
-                rmse[j] = sqrt(rmse[j]);
-                std::cout<<"[" << ebs[j].low << ", "<<ebs[j].high<<"] RMSE: "<<rmse[j]<< ", PSNR: "<< psnr[j]<<std::endl;
-            }
-            delete [] rmse;
-            delete [] psnr;
-            std::cout << "Max error = " << max_err << std::endl;
-            fs << "Max error = " << max_err << std::endl;
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0){
+            endTime = MPI_Wtime();
+            costDecomp += endTime - startTime;
+        }
+//         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+        if(world_rank == 0) {
+            printf ("Kai Finish parallel compressing, total compression ratio %.4g.\n", (double)compressed_size/(double)(num*sizeof(float)));
+            printf("\n");
+            printf ("Timecost of reading original files = %.2f seconds\n", costReadOri);
+            printf ("Timecost of reading compressed files = %.2f seconds\n", costReadZip);
+            printf ("Timecost of writing compressed files = %.2f seconds\n", costWriteZip);
+            printf ("Timecost of writing decompressed files = %.2f seconds\n", costWriteOut);
+            printf ("Timecost of compressing using %d processes = %.2f seconds\n", world_size, costComp);
+            printf ("Timecost of decompressing using %d processes = %.2f seconds\n\n", world_size, costDecomp);
         }
     }
-    fs.close();
+    MPI_Finalize();
     return 0;
 }
