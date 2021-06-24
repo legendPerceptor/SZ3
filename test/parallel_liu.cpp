@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
         if(world_rank == 0) startTime = MPI_Wtime();
-        SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
+        SZ::writefile(zip_filename, compressed.get(), compressed_size);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0){
             endTime = MPI_Wtime();
