@@ -254,11 +254,15 @@ int main(int argc, char** argv) {
     float *dataIn;
     size_t num = 0;
     char zip_filename[100];
+    char folder[100] = "/home/ac.yuanjian/playground";
+    char filename[100];
     sprintf(zip_filename,"%s",outputFilePath.getValue().c_str());
+    int folder_index = world_rank;
     if(mode == "test" || mode == "compress") {
+        sprintf(filename, "%s/%s", folder, inputFileStr.c_str());
         if (world_rank == 0) {
             startTime = MPI_Wtime();
-            auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+            auto data = SZ::readfile<float>(filename, num);
             if (bigEndian.getValue()) { // convert big endian data
                 convert(data.get(), num);
             }
@@ -310,7 +314,7 @@ int main(int argc, char** argv) {
         }
 
         int folder_index = world_rank;
-        sprintf(zip_filename, "%s/kai_%d_%d.out", "/lcrc/globalscratch/yuanjian", folder_index, rand());
+        sprintf(zip_filename, "%s/yuan_%d_%d.out", "/lcrc/globalscratch/yuanjian", folder_index, rand());
         //Write compressed data
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
@@ -356,7 +360,7 @@ int main(int argc, char** argv) {
         }
 //         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
         if(world_rank == 0) {
-            printf ("Kai Finish parallel compressing, total compression ratio %.4g.\n", (double)compressed_size/(double)(num*sizeof(float)));
+            printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)compressed_size/(double)(num*sizeof(float)));
             printf("\n");
             printf ("Timecost of reading original files = %.2f seconds\n", costReadOri);
             printf ("Timecost of reading compressed files = %.2f seconds\n", costReadZip);
