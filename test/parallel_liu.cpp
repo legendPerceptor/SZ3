@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     }
     TCLAP::CmdLine cmd("SZ3 Compress/Decompress tests", ' ', "0.1");
     TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
-    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
+    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The temporary compress file folder", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
     TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", true, "", "string");
     TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
-    TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
+    TCLAP::ValueArg<std::string> decFilePath("q", "inpath", "The input raw data file", true, "", "string");
     TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
@@ -254,15 +254,17 @@ int main(int argc, char** argv) {
     float *dataIn;
     size_t num = 0;
     char zip_filename[100];
-    char folder[100] = "/home/ac.yuanjian/playground";
+    const char *folder=decFilePath.getValue().c_str();
+    const char *tmp_folder= outputFilePath.getValue().c_str();
     char filename[100];
     sprintf(zip_filename,"%s",outputFilePath.getValue().c_str());
     int folder_index = world_rank;
+    std::unique_ptr<float[]> data;
     if(mode == "test" || mode == "compress") {
         sprintf(filename, "%s/%s", folder, inputFileStr.c_str());
         if (world_rank == 0) {
             startTime = MPI_Wtime();
-            auto data = SZ::readfile<float>(filename, num);
+            data = SZ::readfile<float>(filename, num);
             if (bigEndian.getValue()) { // convert big endian data
                 convert(data.get(), num);
             }
@@ -288,7 +290,7 @@ int main(int argc, char** argv) {
         }
         //Compress Input Data
         size_t out_size;
-        if (world_rank == 0) printf ("Compressing %s\n", inputFileStr.c_str());
+        if (world_rank == 0) printf ("Compressing %s\n", filename);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0) startTime = MPI_Wtime();
         std::unique_ptr<unsigned char[]> compressed;
@@ -308,17 +310,18 @@ int main(int argc, char** argv) {
             costComp += endTime - startTime;
         }
         // No need to free dataIn because it is a unique_ptr
-        struct stat st = {0};
-        if (stat("/lcrc/globalscratch/yuanjian", &st) == -1) {
-            mkdir("/lcrc/globalscratch/yuanjian", 0777);
-        }
+//        struct stat st = {0};
+//        if (stat("/lcrc/globalscratch/yuanjian", &st) == -1) {
+//            mkdir("/lcrc/globalscratch/yuanjian", 0777);
+//        }
 
         int folder_index = world_rank;
-        sprintf(zip_filename, "%s/yuan_%d_%d.out", "/lcrc/globalscratch/yuanjian", folder_index, rand());
+        sprintf(zip_filename, "%s/yuan_%d_%d.out", tmp_folder, folder_index, rand());
         //Write compressed data
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
         if(world_rank == 0) startTime = MPI_Wtime();
+        std::cout<<"compressed size: " << compressed_size << std::endl;
         SZ::writefile(zip_filename, compressed.get(), compressed_size);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0){
@@ -360,7 +363,7 @@ int main(int argc, char** argv) {
         }
 //         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
         if(world_rank == 0) {
-            printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)compressed_size/(double)(num*sizeof(float)));
+            printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)(num*sizeof(float))/(double)compressed_size);
             printf("\n");
             printf ("Timecost of reading original files = %.2f seconds\n", costReadOri);
             printf ("Timecost of reading compressed files = %.2f seconds\n", costReadZip);
