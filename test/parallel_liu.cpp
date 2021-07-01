@@ -329,6 +329,11 @@ int main(int argc, char** argv) {
             costWriteZip += endTime - startTime;
         }
     }
+    if (world_rank == 0) {
+        data.release();
+    } else {
+        free(dataIn);
+    }
     if(mode=="test" || mode=="decompress") {
         // Read Compressed Data
         MPI_Barrier(MPI_COMM_WORLD);
