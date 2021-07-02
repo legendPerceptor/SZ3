@@ -5,7 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <mpi.h>
-#include <SZ.hpp>
+#include <utils/FileUtil.h>
 
 int main(int argc, char** argv) {
     std::cout << "argc: " << argc << std::endl;
