@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
         std::cout << "provide input and output files" << std::endl;
         exit(-1);
     }
-
+    srand(time(0));
     // MPI Initialization
     MPI_Init(NULL, NULL);
     int world_size;
