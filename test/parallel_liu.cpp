@@ -368,6 +368,7 @@ int main(int argc, char** argv) {
         }
         if(world_rank == 0) startTime = MPI_Wtime();
         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+        MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank==0) {
             endTime = MPI_Wtime();
             costWriteOut += endTime - startTime;
