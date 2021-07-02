@@ -368,17 +368,17 @@ int main(int argc, char** argv) {
             endTime = MPI_Wtime();
             costDecomp += endTime - startTime;
         }
-        if(world_rank == 0) {
-            startTime = MPI_Wtime();
-            printf("Test writing the decompressed files!\n");
-            std::cout<<"the num: " << num <<"dec file: "<< dp_filename<<std::endl;
-        }
-        SZ::writefile(dp_filename, dec_data.get(), num);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank==0) {
-            endTime = MPI_Wtime();
-            costWriteOut += endTime - startTime;
-        }
+//        if(world_rank == 0) {
+//            startTime = MPI_Wtime();
+//            printf("Test writing the decompressed files!\n");
+//            std::cout<<"the num: " << num <<"dec file: "<< dp_filename<<std::endl;
+//        }
+//        SZ::writefile(dp_filename, dec_data.get(), num);
+//        MPI_Barrier(MPI_COMM_WORLD);
+//        if(world_rank==0) {
+//            endTime = MPI_Wtime();
+//            costWriteOut += endTime - startTime;
+//        }
         if(world_rank == 0) {
             printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)(num*sizeof(float))/(double)compressed_size);
             printf("\n");
