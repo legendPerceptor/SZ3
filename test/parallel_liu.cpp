@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
             costReadZip += endTime - startTime;
         }
         // delete the compressed file
-        remove(zip_filename);
+//        remove(zip_filename);
 
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("decompress field\n");
