@@ -366,7 +366,12 @@ int main(int argc, char** argv) {
             endTime = MPI_Wtime();
             costDecomp += endTime - startTime;
         }
-//         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+        if(world_rank == 0) startTime = MPI_Wtime();
+        SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+        if(world_rank==0) {
+            endTime = MPI_Wtime();
+            costWriteOut += endTime - startTime;
+        }
         if(world_rank == 0) {
             printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)(num*sizeof(float))/(double)compressed_size);
             printf("\n");

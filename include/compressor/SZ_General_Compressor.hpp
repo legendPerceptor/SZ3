@@ -405,7 +405,7 @@ namespace SZ {
             predictor.postcompress_data(inter_block_range->begin());
             quantizer.postcompress_data();
 
-            uchar *compressed_data = new uchar[2 * num_elements * sizeof(T)];
+            uchar *compressed_data = new uchar[1.2 * num_elements * sizeof(T)];
             uchar *compressed_data_pos = compressed_data;
 
             write(global_dimensions.data(), N, compressed_data_pos);
