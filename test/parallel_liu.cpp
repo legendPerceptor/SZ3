@@ -254,6 +254,7 @@ int main(int argc, char** argv) {
     float *dataIn;
     size_t num = 0;
     char zip_filename[100];
+    char dp_filename[100];
     const char *folder=decFilePath.getValue().c_str();
     const char *tmp_folder= outputFilePath.getValue().c_str();
     char filename[100];
@@ -317,6 +318,7 @@ int main(int argc, char** argv) {
 
         int folder_index = world_rank;
         sprintf(zip_filename, "%s/yuan_%d_%d.out", tmp_folder, folder_index, rand());
+        sprintf(dp_filename, "%s/dp_%d_%d.out", tmp_folder, folder_index, rand());
         //Write compressed data
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
@@ -366,8 +368,12 @@ int main(int argc, char** argv) {
             endTime = MPI_Wtime();
             costDecomp += endTime - startTime;
         }
-        if(world_rank == 0) startTime = MPI_Wtime();
-        SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+        if(world_rank == 0) {
+            startTime = MPI_Wtime();
+            printf("Test writing the decompressed files!\n");
+            std::cout<<"the num: " << num <<"dec file: "<< dp_filename<<std::endl;
+        }
+        SZ::writefile(dp_filename, dec_data.get(), num);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank==0) {
             endTime = MPI_Wtime();
