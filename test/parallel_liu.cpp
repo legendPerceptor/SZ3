@@ -42,6 +42,18 @@ static void convert(float* data, int num) {
 }
 
 int main(int argc, char** argv) {
+    // MPI Initialization
+    MPI_Init(NULL, NULL);
+
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    double global_start, global_end;
+    if(world_rank==0){
+        global_start = MPI_Wtime();
+    }
     bool FromFile = false;
     std::vector<std::string> myargv;
     srand(time(NULL));
@@ -160,14 +172,7 @@ int main(int argc, char** argv) {
     bool use_bitmap = use_bitmapArg.getValue();
     const size_t DIM = 3;
 
-    // MPI Initialization
-    MPI_Init(NULL, NULL);
 
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     if (world_rank == 0) printf ("Start parallel compressing ... \n");
     if (world_rank == 0) printf("size: %d\n", world_size);
@@ -398,6 +403,8 @@ int main(int argc, char** argv) {
             printf ("Timecost of writing decompressed files = %.2f seconds\n", costWriteOut);
             printf ("Timecost of compressing using %d processes = %.2f seconds\n", world_size, costComp);
             printf ("Timecost of decompressing using %d processes = %.2f seconds\n\n", world_size, costDecomp);
+            global_end = MPI_Wtime();
+            printf ("The global running time = %.2f seconds\n", global_end-global_start);
         }
     }
     MPI_Finalize();
