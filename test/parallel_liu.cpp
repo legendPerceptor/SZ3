@@ -355,7 +355,7 @@ int main(int argc, char** argv) {
             costReadZip += endTime - startTime;
         }
         // delete the compressed file
-//        remove(zip_filename);
+        remove(zip_filename);
 
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("decompress field\n");
@@ -388,6 +388,7 @@ int main(int argc, char** argv) {
             endTime = MPI_Wtime();
             costWriteOut += endTime - startTime;
         }
+        remove(dp_filename);
         if(world_rank == 0) {
             printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)(num*sizeof(float))/(double)compressed_size);
             printf("\n");
