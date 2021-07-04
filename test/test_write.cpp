@@ -31,8 +31,9 @@ int main(int argc, char** argv) {
         std::cout<< "Write time record" << std::endl;
         startTime = MPI_Wtime();
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     char filename[100];
-    sprintf(filename, "%s/file_%d.out", argv[2], rand());
+    sprintf(filename, "%s/file_%d.out", argv[2], world_rank);
     SZ::writefile(filename, data.get(), num);
     MPI_Barrier(MPI_COMM_WORLD);
     if(world_rank==0){
