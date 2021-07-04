@@ -44,6 +44,7 @@ static void convert(float* data, int num) {
 int main(int argc, char** argv) {
     bool FromFile = false;
     std::vector<std::string> myargv;
+    srand(time(NULL));
     if(argc<=2) {
         FromFile = true;
         std::fstream f;
@@ -172,7 +173,7 @@ int main(int argc, char** argv) {
     if (world_rank == 0) printf("size: %d\n", world_size);
     double costReadOri = 0.0, costReadZip = 0.0, costWriteZip = 0.0, costWriteOut = 0.0, costComp = 0.0, costDecomp = 0.0;
 
-    MPI_Barrier(MPI_COMM_WORLD);
+
 
     SZ::Compressor<float> *sz, *sz_old;
     if(dims.size()==3) {
@@ -263,8 +264,10 @@ int main(int argc, char** argv) {
     std::unique_ptr<float[]> data;
     if(mode == "test" || mode == "compress") {
         sprintf(filename, "%s/%s", folder, inputFileStr.c_str());
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(world_rank == 0) startTime = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) {
-            startTime = MPI_Wtime();
             data = SZ::readfile<float>(filename, num);
             if (bigEndian.getValue()) { // convert big endian data
                 convert(data.get(), num);
@@ -273,12 +276,13 @@ int main(int argc, char** argv) {
             std::cout << "Read " << num << " elements\n";
             std::cout << "Original Size: " << num * sizeof(float) << std::endl;
             std::cout << "RAW File read time: "<< endTime-startTime << std::endl;
-            startTime = MPI_Wtime();
+            double startTime_tmp;
+            startTime_tmp = MPI_Wtime();
             dataIn = data.get();
             MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
             MPI_Bcast(data.get(), num, MPI_FLOAT, 0, MPI_COMM_WORLD);
             endTime = MPI_Wtime();
-            std::cout << "RAW file broadcast time: " << endTime - startTime << std::endl;
+            std::cout << "RAW file broadcast time: " << endTime - startTime_tmp << std::endl;
         } else {
             MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
             dataIn = (float *) malloc(num * sizeof(float));
@@ -294,6 +298,7 @@ int main(int argc, char** argv) {
         if (world_rank == 0) printf ("Compressing %s\n", filename);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0) startTime = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
             compressed.reset(sz_old->compress(dataIn, compressed_size));
@@ -324,6 +329,7 @@ int main(int argc, char** argv) {
         if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
         if(world_rank == 0) startTime = MPI_Wtime();
         std::cout<<"compressed size: " << compressed_size << std::endl;
+        MPI_Barrier(MPI_COMM_WORLD);
         SZ::writefile(zip_filename, compressed.get(), compressed_size);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0){
@@ -341,6 +347,7 @@ int main(int argc, char** argv) {
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("read compressed file from disk %s \n", zip_filename);
         if(world_rank == 0) startTime = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
         auto compressed = SZ::readfile<unsigned char>(zip_filename, compressed_size);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank == 0){
@@ -353,6 +360,7 @@ int main(int argc, char** argv) {
         MPI_Barrier(MPI_COMM_WORLD);
         if (world_rank == 0) printf("decompress field\n");
         if(world_rank == 0) startTime = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
         std::unique_ptr<float[]> dec_data;
         if (fallback) {
             dec_data.reset(sz_old->decompress(compressed.get(), compressed_size));
@@ -373,6 +381,7 @@ int main(int argc, char** argv) {
             printf("Test writing the decompressed files!\n");
             std::cout<<"the num: " << num <<"dec file: "<< dp_filename<<std::endl;
         }
+        MPI_Barrier(MPI_COMM_WORLD);
         SZ::writefile(dp_filename, dec_data.get(), num);
         MPI_Barrier(MPI_COMM_WORLD);
         if(world_rank==0) {
