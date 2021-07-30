@@ -19,6 +19,12 @@ namespace SZ {
         RangeTuple(T low, T high, T eb):low(low), high(high), eb(eb){}
         RangeTuple():low(0), high(0), eb(0){}
     };
+    template<class T>
+    struct RegionTuple {
+        int* start_position, *region_length;
+        T eb;
+        RegionTuple(int* start, int* length, T eb): start_position{start}, region_length{length},eb(eb) {}
+    };
 
     template<class T, class Q>
     struct tuple2{
@@ -209,6 +215,114 @@ namespace SZ {
             return unpred[index++];
         }
     }
+
+    // Quantizer for Region-based
+    template<class T>
+    class RegionBasedQuantizer: public concepts::QuantizerInterface<T> {
+    public:
+        RegionBasedQuantizer(std::vector<RegionTuple<T>> region_ebs, int dim, int r = 32768):region_ebs(region_ebs),radius(r), dim(dim){}
+        RegionBasedQuantizer(){}
+        void init(std::vector<RegionTuple<T>> region_ebs, int dim, int r = 32768){
+            this->region_ebs = region_ebs;
+            this->dim = dim;
+            this->radius = r;
+        }
+    private:
+        std::vector<RegionTuple<T>> region_ebs;
+        std::vector<T> unpred;
+        int radius;
+        int dim;
+    public:
+        void precompress_data() const {}
+
+        void postcompress_data() const {}
+
+        void predecompress_data() const {}
+
+        void postdecompress_data() const {}
+        using value_type = T;
+        using reference = T &;
+
+        // quantize the data with a prediction value, and returns the quantization index
+        int quantize(T data, T pred);
+        tuple2<T,int> quantize_actual(T data, T pred);
+        // quantize the data with a prediction value, and returns the quantization index and the decompressed data
+        // int quantize(T data, T pred, T& dec_data);
+        int quantize_and_overwrite(T &data, T pred);
+
+        // recover the data using the quantization index
+        T recover(T pred, int quant_index);
+
+        void save(unsigned char *&c) const {
+            // std::string serialized(sizeof(uint8_t) + sizeof(T) + sizeof(int),0);
+            c[0] = 0b00000111;
+            c += 1;
+            // std::cout << "saving eb = " << this->error_bound << ", unpred_num = "  << unpred.size() << std::endl;
+            *reinterpret_cast<int *>(c) = dim;
+            c+=sizeof(int);
+            *reinterpret_cast<int *>(c) = region_ebs.size();
+            c += sizeof(int);
+            for(int i=0;i<region_ebs.size();i++){
+                for(int j=0;j<dim;j++) {
+                    *reinterpret_cast<int *>(c) = region_ebs[i].start_position[j];
+                    c += sizeof(int);
+                }
+                for(int j=0;j<dim;j++) {
+                    *reinterpret_cast<int *>(c) = region_ebs[i].end_position[j];
+                    c += sizeof(int);
+                }
+                *reinterpret_cast<T *>(c) = region_ebs[i].eb;
+            }
+            *reinterpret_cast<int *>(c) = this->radius;
+            c += sizeof(int);
+            *reinterpret_cast<size_t *>(c) = unpred.size();
+            c += sizeof(size_t);
+            memcpy(c, unpred.data(), unpred.size() * sizeof(T));
+            c += unpred.size() * sizeof(T);
+        };
+
+        void load(const unsigned char *&c, size_t &remaining_length) {
+            assert(remaining_length > (sizeof(uint8_t) + sizeof(T) + sizeof(int)));
+            c += sizeof(uint8_t);
+            remaining_length -= sizeof(uint8_t);
+            int dim = *reinterpret_cast<const int *>(c);
+            c += sizeof(int);
+            int size = *reinterpret_cast<const int *>(c);
+            c += sizeof(int);
+            region_ebs = std::vector<RegionTuple<T>>(size);
+            for(int i=0;i<size;i++){
+                int *start_position = new int[dim];
+                int *region_length = new int[dim];
+                for(int j=0; j<dim; j++) {
+                    start_position[j] = *reinterpret_cast<const int*>(c);
+                    c += sizeof(int);
+                }
+                for(int j=0; j<dim; j++) {
+                    region_length[j] = *reinterpret_cast<const int*>(c);
+                    c += sizeof(int);
+                }
+                T eb = *reinterpret_cast<const int*>(c);
+                c += sizeof(T);
+                region_ebs[i] = RegionTuple<T>(start_position, remaining_length, eb);
+            }
+//            this->error_bound = *reinterpret_cast<const T *>(c);
+//            this->error_bound_reciprocal = 1.0 / this->error_bound;
+//            c += sizeof(T);
+            this->radius = *reinterpret_cast<const int *>(c);
+            c += sizeof(int);
+            size_t unpred_size = *reinterpret_cast<const size_t *>(c);
+            c += sizeof(size_t);
+            this->unpred = std::vector<T>(reinterpret_cast<const T *>(c), reinterpret_cast<const T *>(c) + unpred_size);
+            c += unpred_size * sizeof(T);
+            // std::cout << "loading: eb = " << this->error_bound << ", unpred_num = "  << unpred.size() << std::endl;
+        }
+
+        void clear() {
+            unpred.clear();
+        }
+        int get_radius() const { return radius;}
+        std::vector<RegionTuple<T>> get_region_ebs() { return region_ebs; }
+    };
 
 
     // Quantizer for multiple

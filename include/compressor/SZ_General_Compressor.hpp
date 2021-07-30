@@ -349,7 +349,56 @@ namespace SZ {
             return dec_data.release();
         }
 
+        uchar* compress_region(T* data, size_t& compressed_size, std::vector<SZ::RegionTuple<T>> region_ebs, int dim) {
+            auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
+                                                                                         std::begin(global_dimensions),
+                                                                                         std::end(global_dimensions), stride, 0);
+            auto intra_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
+                                                                                         std::begin(global_dimensions),
+                                                                                         std::end(global_dimensions), 1, 0);
+            std::array<size_t, N> intra_block_dims;
+            std::vector<int> quant_inds(num_elements);
+            predictor.precompress_data(inter_block_range->begin());
+            region_quantizer.precompress_data();
+            size_t quant_count = 0;
+            struct timespec start, end;
+            {
+                auto inter_begin = inter_block_range->begin();
+                auto inter_end = inter_block_range->end();
+                for (auto block = inter_begin; block != inter_end; ++block) {
 
+                    // std::cout << *block << " " << lp.predict(block) << std::endl;
+                    for (int i = 0; i < intra_block_dims.size(); i++) {
+                        size_t cur_index = block.get_local_index(i);
+                        size_t dims = inter_block_range->get_dimensions(i);
+                        intra_block_dims[i] = (cur_index == dims - 1 && global_dimensions[i] - cur_index * stride < block_size) ?
+                                              global_dimensions[i] - cur_index * stride : block_size;
+                    }
+
+                    intra_block_range->set_dimensions(intra_block_dims.begin(), intra_block_dims.end());
+                    intra_block_range->set_offsets(block.get_offset());
+                    intra_block_range->set_starting_position(block.get_local_index());
+                    concepts::PredictorInterface<T, N> *predictor_withfallback = &predictor;
+                    if (!predictor.precompress_block(intra_block_range)) {
+                        predictor_withfallback = &fallback_predictor;
+                    }
+                    predictor_withfallback->precompress_block_commit();
+//                    quantizer.precompress_block();
+                    auto intra_begin = intra_block_range->begin();
+                    auto intra_end = intra_block_range->end();
+                    for (auto element = intra_begin; element != intra_end; ++element) {
+                        int offset = element.get_offset();
+                        quant_inds[quant_count++] = region_quantizer.quantize_and_overwrite(
+                                *element, predictor_withfallback->predict(element));
+                    }
+                }
+            }
+
+            clock_gettime(CLOCK_REALTIME, &end);
+            std::cout << "Predition & Quantization time = "
+                      << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000
+                      << "s" << std::endl;
+        }
 
         uchar *compress(T *data, size_t &compressed_size) {
 
@@ -503,6 +552,7 @@ namespace SZ {
         LorenzoPredictor<T, N, 1> my_lorenzo;
         LorenzoPredictor<T, N, 1> fallback_predictor;
         Quantizer quantizer;
+        RegionBasedQuantizer<T> region_quantizer;
         Encoder encoder;
         Lossless lossless;
         uint block_size;

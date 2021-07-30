@@ -1,19 +1,10 @@
 //
-// Created by apple on 2021/6/24.
+// Created by apple on 2021/7/28.
 //
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <vector>
-#include <fstream>
-#include <iostream>
-#include <tclap/CmdLine.h>
-#include <sstream>
+//
+// Created by apple on 2021/3/23.
+//
 
 #include <quantizer/IntegerQuantizer.hpp>
 #include <compressor/SZ_General_Compressor.hpp>
@@ -23,15 +14,20 @@
 #include <lossless/Lossless_zstd.hpp>
 #include <utils/Iterator.hpp>
 #include <utils/FileUtil.h>
-#include "mpi.h"
+#include <cstdio>
+#include <iostream>
+#include <cmath>
+#include <memory>
+#include <chrono>
+#include <tclap/CmdLine.h>
+#include <fstream>
 
-
+//namespace fs = std::filesystem;
 static void convert(float* data, int num) {
     float t;
     char *bytes;
     for(int i=0;i<num;i++) {
         bytes = (char*)&data[i];
-//        t = bytes[3] | (bytes[2] << 24) | (bytes[1] << 16) | (bytes[0] << 8);
         t = bytes[3];
         bytes[3] = bytes[0];
         bytes[0] = t;
@@ -40,23 +36,20 @@ static void convert(float* data, int num) {
         bytes[1] = t;
     }
 }
-
-int main(int argc, char** argv) {
-    // MPI Initialization
-    MPI_Init(NULL, NULL);
-
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    double global_start, global_end;
-    if(world_rank==0){
-        global_start = MPI_Wtime();
+static void printData(float* data) {
+    int z =1;
+    printf("special %g\n", data[9098138]);
+    for (int y=0; y< 100; y++) {
+        for(int x=0;x<500;x++){
+            printf("%g  ",data[x + 500*(y+500*z)]);
+        }
+        printf("\n");
     }
+}
+
+int main(int argc, char **argv) {
     bool FromFile = false;
     std::vector<std::string> myargv;
-    srand(time(NULL));
     if(argc<=2) {
         FromFile = true;
         std::fstream f;
@@ -94,15 +87,16 @@ int main(int argc, char** argv) {
     }
     TCLAP::CmdLine cmd("SZ3 Compress/Decompress tests", ' ', "0.1");
     TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
-    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The temporary compress file folder", true, "", "string");
+    TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
     TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", true, "", "string");
-    TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", true,"", "string");
+    TCLAP::ValueArg<std::string> valueRange("r", "range", "The ranges with low, high, and error bound; '20 50 0.1; 50 80 0.01;'", false,"", "string");
+    TCLAP::ValueArg<std::string> regions("w", "region", "The regions; '0.1> 5 5 5: 8 10 12 0.1; 200 200 200: 60 60 60 0.01;'", false, "", "string");
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
-    TCLAP::ValueArg<std::string> decFilePath("q", "inpath", "The input raw data file", true, "", "string");
+    TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
@@ -113,6 +107,7 @@ int main(int argc, char** argv) {
     cmd.add(decFilePath);
     cmd.add(logFilePath);
     cmd.add(modeArg);
+    cmd.add(regions);
     try {
         if(FromFile){
             char** arr = new char*[myargv.size()+1];
@@ -137,22 +132,6 @@ int main(int argc, char** argv) {
             exit(10);
         }
     }
-    std::string ranges = valueRange.getValue();
-    auto ebs = std::vector<SZ::RangeTuple<float>>();
-    int start = 0;
-    int end = ranges.find(';', start);
-    float eb_min = 10000;
-    bool fallback = fall_back.getValue();
-    while(end!=-1){
-        std::string cur_rang = ranges.substr(start, end-start);
-        std::stringstream ss(cur_rang);
-        float low, high, eb;
-        ss>>low>>high>>eb;
-        ebs.push_back(SZ::RangeTuple(low, high, eb));
-        if(eb<eb_min){eb_min=eb;}
-        start = end+1;
-        end = ranges.find(';', start);
-    }
 
     std::string dimsString = dimensionArg.getValue();
     std::vector<size_t> dims;
@@ -164,19 +143,69 @@ int main(int argc, char** argv) {
             dims.push_back(tmp_dim);
         }
     }
+
+    auto ebs = std::vector<SZ::RangeTuple<float>>();
+    auto region_ebs = std::vector<SZ::RegionTuple<float>>();
+    float eb_min = 10000;
+    float default_eb;
+    bool fallback = fall_back.getValue();
+    if(valueRange.isSet() && !regions.isSet()) {
+        std::string ranges = valueRange.getValue();
+        int start = 0;
+        int end = ranges.find(';', start);
+
+        while (end != -1) {
+            std::string cur_rang = ranges.substr(start, end - start);
+            std::stringstream ss(cur_rang);
+            float low, high, eb;
+            ss >> low >> high >> eb;
+            ebs.push_back(SZ::RangeTuple(low, high, eb));
+            if (eb < eb_min) { eb_min = eb; }
+            start = end + 1;
+            end = ranges.find(';', start);
+        }
+    } else if(regions.isSet() && ! valueRange.isSet()) {
+        std::string regionStr = regions.getValue();
+        int start = 0;
+        int end = regionStr.find('>', start);
+        if(end==std::string::npos) {
+            std::cerr<<"The region requires a default error bound!" << std::endl;
+            exit(1);
+        }
+        default_eb = std::stof(regionStr.substr(start, end - start));
+        start = end + 1;
+        while(end!=std::string::npos) {
+            int *start_position = new int[dims.size()];
+            int *region_length = new int[dims.size()];
+            end = regionStr.find(':', start);
+            std::stringstream ss(regionStr.substr(start, end - start));
+            for (int i = 0; i < dims.size(); i++) {
+                ss >> start_position[i];
+            }
+            start = end + 1;
+            end = regionStr.find(';', start);
+            std::stringstream ss2(regionStr.substr(start, end - start));
+            for (int i = 0; i < dims.size(); i++) {
+                ss2 >> region_length[i];
+            }
+            float eb;
+            ss2 >> eb;
+            if(eb < eb_min) {
+                eb_min = eb;
+            }
+            region_ebs.emplace_back(start_position, region_length, eb);
+        }
+    }
+
+
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
-    const size_t DIM = 3;
+//    const size_t DIM = 3;
 
-
-
-    if (world_rank == 0) printf ("Start parallel compressing ... \n");
-    if (world_rank == 0) printf("size: %d\n", world_size);
-    double costReadOri = 0.0, costReadZip = 0.0, costWriteZip = 0.0, costWriteOut = 0.0, costComp = 0.0, costDecomp = 0.0;
 
 
 
@@ -184,7 +213,7 @@ int main(int argc, char** argv) {
     if(dims.size()==3) {
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 3, 1>>(eb);
         auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 3>>(6, 0.1*eb_min);
-        std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, DIM>>> predictors_;
+        std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 3>>> predictors_;
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
         SZ::Config<float, 3> conf(eb, std::array<size_t, 3>{  dims[0], dims[1], dims[2]});
@@ -253,120 +282,58 @@ int main(int argc, char** argv) {
     }
 
     size_t compressed_size = 0;
-//    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
-    double startTime, endTime;
+    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
     std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
-    std::string inputFileStr = inputFilePath.getValue();
-    float *dataIn;
     size_t num = 0;
-    char zip_filename[100];
-    char dp_filename[100];
-    const char *folder=decFilePath.getValue().c_str();
-    const char *tmp_folder= outputFilePath.getValue().c_str();
-    char filename[100];
-    sprintf(zip_filename,"%s",outputFilePath.getValue().c_str());
-    int folder_index = world_rank;
-    std::unique_ptr<float[]> data;
+    std::string inputFileStr = inputFilePath.getValue();
     if(mode == "test" || mode == "compress") {
-        sprintf(filename, "%s/%s", folder, inputFileStr.c_str());
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0) startTime = MPI_Wtime();
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (world_rank == 0) {
-            data = SZ::readfile<float>(filename, num);
-            if (bigEndian.getValue()) { // convert big endian data
-                convert(data.get(), num);
-            }
-            endTime = MPI_Wtime();
-            std::cout << "Read " << num << " elements\n";
-            std::cout << "Original Size: " << num * sizeof(float) << std::endl;
-            std::cout << "RAW File read time: "<< endTime-startTime << std::endl;
-            double startTime_tmp;
-            startTime_tmp = MPI_Wtime();
-            dataIn = data.get();
-            MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
-            MPI_Bcast(data.get(), num, MPI_FLOAT, 0, MPI_COMM_WORLD);
-            endTime = MPI_Wtime();
-            std::cout << "RAW file broadcast time: " << endTime - startTime_tmp << std::endl;
-        } else {
-            MPI_Bcast(&num, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
-            dataIn = (float *) malloc(num * sizeof(float));
-            MPI_Bcast(dataIn, num, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+        std::cout << "Read " << num << " elements\n";
+        std::cout << "Original Size: " << num * sizeof(float) << std::endl;
+        if (bigEndian.getValue()) { // convert big endian data
+            convert(data.get(), num);
         }
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0){
-            endTime = MPI_Wtime();
-            costReadOri += endTime - startTime;
-        }
-        //Compress Input Data
-        size_t out_size;
-        if (world_rank == 0) printf ("Compressing %s\n", filename);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0) startTime = MPI_Wtime();
-        MPI_Barrier(MPI_COMM_WORLD);
+//        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
+//        for(int i=0;i<num;i++){
+//            data[i] = fmin(fmax(low_range, data[i]), high_range);
+//        }
+//        std::cout<<"special after global range: "<<data[13692013]<<std::endl;
+//        std::cout<<"special: "<< data[13692013]<<std::endl;
+//        auto quantizer = SZ::MultipleErrorBoundsQuantizer<float>(ebs);
+//        float dp= data[13692013];
+//        int tmp_quant = quantizer.quantize_and_overwrite(dp, -4.921669006);
+//        float dp2 = quantizer.recover(-4.921669006, tmp_quant);
+//        printf("tests!!!!!!");
+        startTime = std::chrono::system_clock::now();
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
-            compressed.reset(sz_old->compress(dataIn, compressed_size));
+            compressed.reset(sz_old->compress(data.get(), compressed_size));
         } else if (!has_bg) {
-            compressed.reset(sz->compress(dataIn, compressed_size));
+            compressed.reset(sz->compress(data.get(), compressed_size));
         } else {
             compressed.reset(
-                    sz->compress_withBG(dataIn, compressed_size, bg, low_range, high_range, use_bitmap,
+                    sz->compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                         preserve_sign,
                                         has_bg));
         }
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0) {
-            endTime = MPI_Wtime();
-            costComp += endTime - startTime;
-        }
-        // No need to free dataIn because it is a unique_ptr
-//        struct stat st = {0};
-//        if (stat("/lcrc/globalscratch/yuanjian", &st) == -1) {
-//            mkdir("/lcrc/globalscratch/yuanjian", 0777);
-//        }
-
-        int folder_index = world_rank;
-        sprintf(zip_filename, "%s/yuan_%d_%d.out", tmp_folder, folder_index, rand());
-        sprintf(dp_filename, "%s/dp_%d_%d.out", tmp_folder, folder_index, rand());
-        //Write compressed data
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (world_rank == 0) printf("write compressed file to disk %s \n", zip_filename);
-        std::cout<<"compressed size: " << compressed_size << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0) startTime = MPI_Wtime();
-        MPI_Barrier(MPI_COMM_WORLD);
-        SZ::writefile(zip_filename, compressed.get(), compressed_size);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0){
-            endTime = MPI_Wtime();
-            costWriteZip += endTime - startTime;
-        }
-    }
-    if (world_rank == 0) {
-        data.release();
-    } else {
-        free(dataIn);
+        endTime = std::chrono::system_clock::now();
+        std::cout << "Compression time: "
+                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
+                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
+                     1000000000 << "s"
+                  << std::endl;
+        std::cout << "Compressed size = " << compressed_size << std::endl;
+        std::cout << "Compression Ratio = " << num * sizeof(float) / (float) compressed_size << std::endl;
+        SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
+        fs << outputFilePath.getValue() << " Compression Time: "
+           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+           << "s;"
+           << "Compression size: " << compressed_size << "; Compression ratio: "
+           << num * sizeof(float) / (float) compressed_size << "; ";
     }
     if(mode=="test" || mode=="decompress") {
-        // Read Compressed Data
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (world_rank == 0) printf("read compressed file from disk %s \n", zip_filename);
-        if(world_rank == 0) startTime = MPI_Wtime();
-        MPI_Barrier(MPI_COMM_WORLD);
-        auto compressed = SZ::readfile<unsigned char>(zip_filename, compressed_size);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0){
-            endTime = MPI_Wtime();
-            costReadZip += endTime - startTime;
-        }
-        // delete the compressed file
-        remove(zip_filename);
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (world_rank == 0) printf("decompress field\n");
-        if(world_rank == 0) startTime = MPI_Wtime();
-        MPI_Barrier(MPI_COMM_WORLD);
+        auto compressed = SZ::readfile<unsigned char>(outputFilePath.getValue().c_str(), compressed_size);
+        startTime = std::chrono::system_clock::now();
         std::unique_ptr<float[]> dec_data;
         if (fallback) {
             dec_data.reset(sz_old->decompress(compressed.get(), compressed_size));
@@ -377,37 +344,77 @@ int main(int argc, char** argv) {
                     sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                           preserve_sign, has_bg));
         }
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank == 0){
-            endTime = MPI_Wtime();
-            costDecomp += endTime - startTime;
-        }
-        if(world_rank == 0) {
-            printf("Test writing the decompressed files!\n");
-            std::cout<<"the num: " << num <<"dec file: "<< dp_filename<<std::endl;
-            startTime = MPI_Wtime();
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-        SZ::writefile(dp_filename, dec_data.get(), num);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(world_rank==0) {
-            endTime = MPI_Wtime();
-            costWriteOut += endTime - startTime;
-        }
-        remove(dp_filename);
-        if(world_rank == 0) {
-            printf ("Yuan Finish parallel compressing, total compression ratio %.4g.\n", (double)(num*sizeof(float))/(double)compressed_size);
-            printf("\n");
-            printf ("Timecost of reading original files = %.2f seconds\n", costReadOri);
-            printf ("Timecost of reading compressed files = %.2f seconds\n", costReadZip);
-            printf ("Timecost of writing compressed files = %.2f seconds\n", costWriteZip);
-            printf ("Timecost of writing decompressed files = %.2f seconds\n", costWriteOut);
-            printf ("Timecost of compressing using %d processes = %.2f seconds\n", world_size, costComp);
-            printf ("Timecost of decompressing using %d processes = %.2f seconds\n\n", world_size, costDecomp);
-            global_end = MPI_Wtime();
-            printf ("The global running time = %.2f seconds\n", global_end-global_start);
+        SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
+//    err = clock_gettime(CLOCK_REALTIME, &end);
+        endTime = std::chrono::system_clock::now();
+        std::cout << "Decompression time: "
+                  //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
+                  << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
+                     1000000000 << "s"
+                  << std::endl;
+        fs << "Decompression Time: "
+           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+           << "s; ";
+
+        if(mode=="test") {
+            auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
+            if (bigEndian.getValue()) {
+                convert(dataV.get(), num);
+            }
+            float max_err = 0;
+            std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
+            float *rmse = new float [ebs.size()];
+            memset(rmse,0,sizeof(float)*ebs.size());
+            float *psnr = new float[ebs.size()];
+            memset(psnr,0,sizeof(float)*ebs.size());
+            float dmin=10000,dmax=-10000;
+            int *nums = new int[ebs.size()];
+            memset(nums, 0, sizeof(int)*ebs.size());
+            for (int i = 0; i < num; i++) {
+//                if (!has_bg) {
+//                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
+//                }
+                if(dataV[i]>dmax){
+                    dmax=dataV[i];
+                }
+                if(dataV[i]<dmin){
+                    dmin=dataV[i];
+                }
+                for(int j=0;j<ebs.size();j++) {
+                    if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
+                        nums[j]++;
+                        break;
+                    }
+                }
+            }
+            int sum=0;
+            for(int j=0;j<ebs.size();j++) {
+                sum+=nums[j];
+            }
+            std::cout<<"total num: "<<sum<<std::endl;
+            for (int i=0;i<num;i++){
+                for(int j=0;j<ebs.size();j++) {
+                    if(dataV[i]>= ebs[j].low && dataV[i] < ebs[j].high) {
+                        float diff = dataV[i] - dec_data[i];
+                        float t = diff*diff/nums[j];
+                        rmse[j] += t;
+                    }
+                }
+                if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
+                    max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
+                }
+            }
+            for(int j=0;j<ebs.size();j++){
+                psnr[j] = 20 * log10(dmax-dmin) - 10 * log10(rmse[j]);
+                rmse[j] = sqrt(rmse[j]);
+                std::cout<<"[" << ebs[j].low << ", "<<ebs[j].high<<"] RMSE: "<<rmse[j]<< ", PSNR: "<< psnr[j]<<std::endl;
+            }
+            delete [] rmse;
+            delete [] psnr;
+            std::cout << "Max error = " << max_err << std::endl;
+            fs << "Max error = " << max_err << std::endl;
         }
     }
-    MPI_Finalize();
+    fs.close();
     return 0;
 }

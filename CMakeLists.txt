@@ -3,7 +3,7 @@ project(SZ)
 #project(First VERSION 3.0.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-O3")
+set(CMAKE_CXX_FLAGS "-O0")
 add_definitions(-DPOLY_REGRESSION_COEF_FOLDER="${CMAKE_CURRENT_SOURCE_DIR}/data/")
 
 message("The Project Source DIR:" ${PROJECT_SOURCE_DIR})
