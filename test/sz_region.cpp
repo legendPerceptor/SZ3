@@ -149,6 +149,7 @@ int main(int argc, char **argv) {
     float eb_min = 10000;
     float default_eb;
     bool fallback = fall_back.getValue();
+    float low_range, high_range;
     if(valueRange.isSet() && !regions.isSet()) {
         std::string ranges = valueRange.getValue();
         int start = 0;
@@ -164,6 +165,8 @@ int main(int argc, char **argv) {
             start = end + 1;
             end = ranges.find(';', start);
         }
+        low_range = (*ebs.begin()).low;
+        high_range = ebs[ebs.size()-1].high;
     } else if(regions.isSet() && ! valueRange.isSet()) {
         std::string regionStr = regions.getValue();
         int start = 0;
@@ -178,6 +181,9 @@ int main(int argc, char **argv) {
             int *start_position = new int[dims.size()];
             int *region_length = new int[dims.size()];
             end = regionStr.find(':', start);
+            if(end == std::string::npos) {
+                break;
+            }
             std::stringstream ss(regionStr.substr(start, end - start));
             for (int i = 0; i < dims.size(); i++) {
                 ss >> start_position[i];
@@ -194,12 +200,13 @@ int main(int argc, char **argv) {
                 eb_min = eb;
             }
             region_ebs.emplace_back(start_position, region_length, eb);
+            start = end + 1;
         }
     }
 
 
-    float eb =eb_min;
-    float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
+    float eb =default_eb;
+
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
@@ -209,7 +216,7 @@ int main(int argc, char **argv) {
 
 
 
-    SZ::Compressor<float> *sz, *sz_old;
+    SZ::Compressor<float> *sz, *sz_old, *sz_region;
     if(dims.size()==3) {
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 3, 1>>(eb);
         auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 3>>(6, 0.1*eb_min);
@@ -217,22 +224,33 @@ int main(int argc, char **argv) {
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
         SZ::Config<float, 3> conf(eb, std::array<size_t, 3>{  dims[0], dims[1], dims[2]});
-        sz = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 3>(predictors_),
-//            SZ::LinearQuantizer<float>(eb),
-                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
-        sz_old = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 3>(predictors_),
-                SZ::LinearQuantizer<float>(eb),
+        if(fallback) {
+            sz_old = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 3>(predictors_),
+                    SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        } else if(valueRange.isSet()) {
+            sz = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 3>(predictors_),
+//            SZ::LinearQuantizer<float>(eb),
+                    SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        }else if(regions.isSet()) {
+            sz_region = new SZ::SZ_General_Compressor<float, 3, SZ::ComposedPredictor<float, 3>, SZ::RegionBasedQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 3>(predictors_),
+                    SZ::RegionBasedQuantizer<float>(region_ebs, 3, default_eb),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        }
     } else if(dims.size()==2) {
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 2, 1>>(eb);
         auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 2>>(6, 0.1*eb_min);
@@ -240,22 +258,33 @@ int main(int argc, char **argv) {
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
         SZ::Config<float, 2> conf(eb, std::array<size_t, 2>{  dims[0], dims[1]});
-        sz = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 2>(predictors_),
-//            SZ::LinearQuantizer<float>(eb),
-                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
-        sz_old = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 2>(predictors_),
-                SZ::LinearQuantizer<float>(eb),
+        if(fallback) {
+            sz_old = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 2>(predictors_),
+                    SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        } else if(valueRange.isSet()) {
+            sz = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 2>(predictors_),
+//            SZ::LinearQuantizer<float>(eb),
+                    SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        } else if (regions.isSet()) {
+            sz_region = new SZ::SZ_General_Compressor<float, 2, SZ::ComposedPredictor<float, 2>, SZ::RegionBasedQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 2>(predictors_),
+                    SZ::RegionBasedQuantizer<float>(region_ebs, 2, default_eb),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        }
     } else if (dims.size()==1){
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 1, 1>>(eb);
         auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 1>>(6, 0.1*eb_min);
@@ -263,22 +292,33 @@ int main(int argc, char **argv) {
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
         SZ::Config<float, 1> conf(eb, std::array<size_t, 1>{  dims[0]});
-        sz = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 1>(predictors_),
-//            SZ::LinearQuantizer<float>(eb),
-                SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
-        sz_old = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
-                conf,
-                SZ::ComposedPredictor<float, 1>(predictors_),
-                SZ::LinearQuantizer<float>(eb),
+        if(fallback) {
+            sz_old = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::LinearQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 1>(predictors_),
+                    SZ::LinearQuantizer<float>(eb),
 //            SZ::MultipleErrorBoundsQuantizer<float>(ebs),
-                SZ::HuffmanEncoder<int>(),
-                SZ::Lossless_zstd()
-        );
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        } else if(valueRange.isSet()) {
+            sz = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::MultipleErrorBoundsQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 1>(predictors_),
+//            SZ::LinearQuantizer<float>(eb),
+                    SZ::MultipleErrorBoundsQuantizer<float>(ebs),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        } else if (regions.isSet()) {
+            sz_region = new SZ::SZ_General_Compressor<float, 1, SZ::ComposedPredictor<float, 1>, SZ::RegionBasedQuantizer<float>, SZ::HuffmanEncoder<int>, SZ::Lossless_zstd>(
+                    conf,
+                    SZ::ComposedPredictor<float, 1>(predictors_),
+                    SZ::RegionBasedQuantizer<float>(region_ebs, 1, default_eb),
+                    SZ::HuffmanEncoder<int>(),
+                    SZ::Lossless_zstd()
+            );
+        }
     }
 
     size_t compressed_size = 0;
@@ -308,14 +348,20 @@ int main(int argc, char **argv) {
         std::unique_ptr<unsigned char[]> compressed;
         if (fallback) {
             compressed.reset(sz_old->compress(data.get(), compressed_size));
-        } else if (!has_bg) {
+        } else if (valueRange.isSet() && !regions.isSet() && !has_bg) {
             compressed.reset(sz->compress(data.get(), compressed_size));
-        } else {
+        } else if (regions.isSet() && !valueRange.isSet() && !has_bg) {
+            compressed.reset(sz_region->compress_region(data.get(), compressed_size));
+        } else if (valueRange.isSet() && has_bg) {
             compressed.reset(
                     sz->compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                         preserve_sign,
                                         has_bg));
+        } else {
+            std::cerr << "The configuration must be wrong; You can use fallback, regions, multi-range, or background!"<< std::endl;
+            exit(-1);
         }
+
         endTime = std::chrono::system_clock::now();
         std::cout << "Compression time: "
                   //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
@@ -337,12 +383,17 @@ int main(int argc, char **argv) {
         std::unique_ptr<float[]> dec_data;
         if (fallback) {
             dec_data.reset(sz_old->decompress(compressed.get(), compressed_size));
-        } else if (!has_bg) {
+        } else if (valueRange.isSet() && !regions.isSet() && !has_bg) {
             dec_data.reset(sz->decompress(compressed.get(), compressed_size));
-        } else {
+        } else if(regions.isSet() && !valueRange.isSet() && !has_bg){
+            dec_data.reset(sz_region->decompress(compressed.get(), compressed_size));
+        } else if(valueRange.isSet() && has_bg){
             dec_data.reset(
                     sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
                                           preserve_sign, has_bg));
+        } else {
+            std::cerr << "The configuration must be wrong; You can use fallback, regions, multi-range, or background!"<< std::endl;
+            exit(-1);
         }
         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
 //    err = clock_gettime(CLOCK_REALTIME, &end);

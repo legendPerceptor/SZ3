@@ -24,6 +24,7 @@ namespace SZ {
         int* start_position, *region_length;
         T eb;
         RegionTuple(int* start, int* length, T eb): start_position{start}, region_length{length},eb(eb) {}
+        RegionTuple():start_position{nullptr}, region_length{nullptr}, eb{0} {}
     };
 
     template<class T, class Q>
@@ -220,18 +221,42 @@ namespace SZ {
     template<class T>
     class RegionBasedQuantizer: public concepts::QuantizerInterface<T> {
     public:
-        RegionBasedQuantizer(std::vector<RegionTuple<T>> region_ebs, int dim, int r = 32768):region_ebs(region_ebs),radius(r), dim(dim){}
+        RegionBasedQuantizer(std::vector<RegionTuple<T>> region_ebs, int dim, T default_eb, int r = 32768):region_ebs(region_ebs),radius(r), dim(dim), default_eb(default_eb){}
         RegionBasedQuantizer(){}
-        void init(std::vector<RegionTuple<T>> region_ebs, int dim, int r = 32768){
+        void init(std::vector<RegionTuple<T>> region_ebs, int dim, T default_eb, int r = 32768){
             this->region_ebs = region_ebs;
             this->dim = dim;
             this->radius = r;
+            this->index = 0;
+            this->default_eb = default_eb;
         }
+        void set_region_ebs(std::vector<size_t> location) {
+            for(int i=0; i<region_ebs.size(); i++) {
+                int check=0;
+                for(int j=0; j<dim; j++) {
+                    int diff = location[j] - region_ebs[i].start_position[j];
+                    if(diff>0 && diff < region_ebs[i].region_length[j]) {
+                        // pass the j dimension test, but still not sure if it is inside
+                        check++;
+                    }
+                }
+                if(check==dim) {
+                    // It means the point is inside region j
+                    error_bound = region_ebs[i].eb;
+                    return;
+                }
+            }
+            error_bound = default_eb;
+        }
+
     private:
         std::vector<RegionTuple<T>> region_ebs;
         std::vector<T> unpred;
         int radius;
-        int dim;
+        int dim, index;
+        int region_index;
+        T default_eb;
+        T error_bound;
     public:
         void precompress_data() const {}
 
@@ -245,7 +270,6 @@ namespace SZ {
 
         // quantize the data with a prediction value, and returns the quantization index
         int quantize(T data, T pred);
-        tuple2<T,int> quantize_actual(T data, T pred);
         // quantize the data with a prediction value, and returns the quantization index and the decompressed data
         // int quantize(T data, T pred, T& dec_data);
         int quantize_and_overwrite(T &data, T pred);
@@ -268,10 +292,11 @@ namespace SZ {
                     c += sizeof(int);
                 }
                 for(int j=0;j<dim;j++) {
-                    *reinterpret_cast<int *>(c) = region_ebs[i].end_position[j];
+                    *reinterpret_cast<int *>(c) = region_ebs[i].region_length[j];
                     c += sizeof(int);
                 }
                 *reinterpret_cast<T *>(c) = region_ebs[i].eb;
+                c += sizeof(T);
             }
             *reinterpret_cast<int *>(c) = this->radius;
             c += sizeof(int);
@@ -301,9 +326,9 @@ namespace SZ {
                     region_length[j] = *reinterpret_cast<const int*>(c);
                     c += sizeof(int);
                 }
-                T eb = *reinterpret_cast<const int*>(c);
+                T eb = *reinterpret_cast<const T*>(c);
                 c += sizeof(T);
-                region_ebs[i] = RegionTuple<T>(start_position, remaining_length, eb);
+                region_ebs[i] = RegionTuple<T>(start_position, region_length, eb);
             }
 //            this->error_bound = *reinterpret_cast<const T *>(c);
 //            this->error_bound_reciprocal = 1.0 / this->error_bound;
@@ -315,6 +340,7 @@ namespace SZ {
             this->unpred = std::vector<T>(reinterpret_cast<const T *>(c), reinterpret_cast<const T *>(c) + unpred_size);
             c += unpred_size * sizeof(T);
             // std::cout << "loading: eb = " << this->error_bound << ", unpred_num = "  << unpred.size() << std::endl;
+            index = 0;
         }
 
         void clear() {
@@ -324,7 +350,43 @@ namespace SZ {
         std::vector<RegionTuple<T>> get_region_ebs() { return region_ebs; }
     };
 
-
+    template<class T>
+    inline int RegionBasedQuantizer<T>::quantize_and_overwrite(T &data, T pred) {
+        T diff = data - pred;
+        T error_bound = this->error_bound;
+        T error_bound_reciprocal = 1.0 / error_bound;
+        int quant_index_shifted = this->radius + round(diff * error_bound_reciprocal/2.0);
+        T decompressed_data = pred + (quant_index_shifted - this->radius)*2 * error_bound;
+        if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > error_bound) {
+            // Handle Unpredictable data
+            unpred.push_back(data);
+            return 0;// 0 denotes unpredictable data
+        }
+        data = decompressed_data;
+        return quant_index_shifted;
+    }
+    template<class T>
+    int RegionBasedQuantizer<T>::quantize(T data, T pred) {
+        T diff = data - pred;
+        T error_bound = this->error_bound;
+        T error_bound_reciprocal = 1.0 / this->error_bound;
+        int quant_index_shifted = this->radius + round(diff * error_bound_reciprocal/2.0);
+        T decompressed_data = pred + (quant_index_shifted - this->radius)*2 * error_bound;
+        if(quant_index_shifted >= 2*this->radius || quant_index_shifted <=0 || fabs(decompressed_data - data) > error_bound) {
+            // Handle Unpredictable data
+            unpred.push_back(data);
+            return 0;// 0 denotes unpredictable data
+        }
+        return quant_index_shifted;
+    }
+    template<class T>
+    T RegionBasedQuantizer<T>::recover(T pred, int quant_index) {
+        if (quant_index) {
+            return pred + (quant_index - this->radius) * 2 * this->error_bound;
+        } else {
+            return unpred[index++];
+        }
+    }
     // Quantizer for multiple
     template<class T>
     class MultipleErrorBoundsQuantizer : public concepts::QuantizerInterface<T>  {
