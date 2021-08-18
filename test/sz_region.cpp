@@ -472,9 +472,9 @@ int main(int argc, char **argv) {
                 for (int i = 0; i < num; i++) {
                     if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
                         max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
-                        if(max_err > 0.1) {
-                            std::cout << "dataV[" << i <<"] = "<<dataV[i] << " | dec_data[" << i <<"] = "<< dec_data[i]<<std::endl;
-                        }
+//                        if(max_err > 0.1) {
+//                            std::cout << "dataV[" << i <<"] = "<<dataV[i] << " | dec_data[" << i <<"] = "<< dec_data[i]<<std::endl;
+//                        }
                     }
                 }
                 std::cout << "Max error = " << max_err << std::endl;
