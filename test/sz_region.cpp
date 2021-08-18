@@ -386,7 +386,7 @@ int main(int argc, char **argv) {
         } else if (valueRange.isSet() && !regions.isSet() && !has_bg) {
             dec_data.reset(sz->decompress(compressed.get(), compressed_size));
         } else if(regions.isSet() && !valueRange.isSet() && !has_bg){
-            dec_data.reset(sz_region->decompress(compressed.get(), compressed_size));
+            dec_data.reset(sz_region->decompress_region(compressed.get(), compressed_size));
         } else if(valueRange.isSet() && has_bg){
             dec_data.reset(
                     sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
@@ -413,57 +413,72 @@ int main(int argc, char **argv) {
                 convert(dataV.get(), num);
             }
             float max_err = 0;
-            std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
-            float *rmse = new float [ebs.size()];
-            memset(rmse,0,sizeof(float)*ebs.size());
-            float *psnr = new float[ebs.size()];
-            memset(psnr,0,sizeof(float)*ebs.size());
-            float dmin=10000,dmax=-10000;
-            int *nums = new int[ebs.size()];
-            memset(nums, 0, sizeof(int)*ebs.size());
-            for (int i = 0; i < num; i++) {
+            if(valueRange.isSet()) {
+                std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
+                float *rmse = new float[ebs.size()];
+                memset(rmse, 0, sizeof(float) * ebs.size());
+                float *psnr = new float[ebs.size()];
+                memset(psnr, 0, sizeof(float) * ebs.size());
+                float dmin = 10000, dmax = -10000;
+                int *nums = new int[ebs.size()];
+                memset(nums, 0, sizeof(int) * ebs.size());
+                for (int i = 0; i < num; i++) {
 //                if (!has_bg) {
 //                    dataV[i] = fmin(fmax(low_range, dataV[i]), high_range);
 //                }
-                if(dataV[i]>dmax){
-                    dmax=dataV[i];
-                }
-                if(dataV[i]<dmin){
-                    dmin=dataV[i];
-                }
-                for(int j=0;j<ebs.size();j++) {
-                    if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
-                        nums[j]++;
-                        break;
+                    if (dataV[i] > dmax) {
+                        dmax = dataV[i];
+                    }
+                    if (dataV[i] < dmin) {
+                        dmin = dataV[i];
+                    }
+                    for (int j = 0; j < ebs.size(); j++) {
+                        if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
+                            nums[j]++;
+                            break;
+                        }
                     }
                 }
-            }
-            int sum=0;
-            for(int j=0;j<ebs.size();j++) {
-                sum+=nums[j];
-            }
-            std::cout<<"total num: "<<sum<<std::endl;
-            for (int i=0;i<num;i++){
-                for(int j=0;j<ebs.size();j++) {
-                    if(dataV[i]>= ebs[j].low && dataV[i] < ebs[j].high) {
-                        float diff = dataV[i] - dec_data[i];
-                        float t = diff*diff/nums[j];
-                        rmse[j] += t;
+                int sum = 0;
+                for (int j = 0; j < ebs.size(); j++) {
+                    sum += nums[j];
+                }
+                std::cout << "total num: " << sum << std::endl;
+                for (int i = 0; i < num; i++) {
+                    for (int j = 0; j < ebs.size(); j++) {
+                        if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
+                            float diff = dataV[i] - dec_data[i];
+                            float t = diff * diff / nums[j];
+                            rmse[j] += t;
+                        }
+                    }
+                    if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
+                        max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
                     }
                 }
-                if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
-                    max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
+                for (int j = 0; j < ebs.size(); j++) {
+                    psnr[j] = 20 * log10(dmax - dmin) - 10 * log10(rmse[j]);
+                    rmse[j] = sqrt(rmse[j]);
+                    std::cout << "[" << ebs[j].low << ", " << ebs[j].high << "] RMSE: " << rmse[j] << ", PSNR: "
+                              << psnr[j] << std::endl;
                 }
+                delete[] rmse;
+                delete[] psnr;
+                std::cout << "Max error = " << max_err << std::endl;
+                fs << "Max error = " << max_err << std::endl;
+            } else {
+                std::cout << "Region Based - Num of elements: " << num << std::endl;
+                max_err = 0;
+                for (int i = 0; i < num; i++) {
+                    if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
+                        max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
+                        if(max_err > 0.1) {
+                            std::cout << "dataV[" << i <<"] = "<<dataV[i] << " | dec_data[" << i <<"] = "<< dec_data[i]<<std::endl;
+                        }
+                    }
+                }
+                std::cout << "Max error = " << max_err << std::endl;
             }
-            for(int j=0;j<ebs.size();j++){
-                psnr[j] = 20 * log10(dmax-dmin) - 10 * log10(rmse[j]);
-                rmse[j] = sqrt(rmse[j]);
-                std::cout<<"[" << ebs[j].low << ", "<<ebs[j].high<<"] RMSE: "<<rmse[j]<< ", PSNR: "<< psnr[j]<<std::endl;
-            }
-            delete [] rmse;
-            delete [] psnr;
-            std::cout << "Max error = " << max_err << std::endl;
-            fs << "Max error = " << max_err << std::endl;
         }
     }
     fs.close();

@@ -161,7 +161,7 @@ namespace SZ {
                         } else {
                             T pred = predictor_withfallback->predict(element);
                             prediction_debug[offset] = pred;
-                            quant_inds[offset] = quantizer.quantize_and_overwrite(
+                            quant_inds[quant_count] = quantizer.quantize_and_overwrite(
                                     *element, pred);
                             element_debug[offset] = *element;
                             quant_count++;
@@ -308,7 +308,7 @@ namespace SZ {
                                 exit(1);
                             }
                             *element = quantizer.recover(pred,
-                                                         quant_inds[offset]);
+                                                         *(quant_inds_pos++));
                             if( *element != element_debug[offset]) {
                                 printf("offset: %d, *element=%.9f, debug_element=%.9f\n", offset, *element, element_debug[offset]);
                                 printf("offset: %d, pred=%.9f, debug_pred=%.9f\n", offset, pred, prediction_debug[offset]);
@@ -400,8 +400,15 @@ namespace SZ {
                     std::vector<size_t> location_vec(location.begin(), location.end());
                     region_quantizer->set_region_ebs(location_vec);
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        quant_inds[quant_count++] = quantizer.quantize_and_overwrite(
+                        int offset = element.get_offset();
+                        quant_inds[quant_count++] = region_quantizer->quantize_and_overwrite(
                                 *element, predictor_withfallback->predict(element));
+//                        T pred = predictor_withfallback->predict(element);
+//                        prediction_debug[offset] = pred;
+//                        quant_inds[quant_count] = quantizer.quantize_and_overwrite(
+//                                *element, pred);
+//                        element_debug[offset] = *element;
+//                        quant_count++;
                     }
                 }
             }
@@ -495,7 +502,22 @@ namespace SZ {
                     region_quantizer = (RegionBasedQuantizer<T>*)(&quantizer);
                     region_quantizer->set_region_ebs(location_vec);
                     for (auto element = intra_begin; element != intra_end; ++element) {
-                        *element = quantizer.recover(predictor_withfallback->predict(element), *(quant_inds_pos++));
+                        *element = region_quantizer->recover(predictor_withfallback->predict(element), *(quant_inds_pos++));
+//                        int offset = element.get_offset();
+//                        T pred = predictor_withfallback->predict(element);
+//                        if(pred != prediction_debug[offset]){
+//                            // std::cerr << "Prediction inconsistent! Offset:" << offset << "Pred="<<pred <<"debug_pred="<<prediction_debug[offset]<<std::endl;
+//                            printf("offset: %d, pred=%.4f, debug_pred=%.4f\n", offset, pred, prediction_debug[offset]);
+//                            exit(1);
+//                        }
+//                        *element = quantizer.recover(pred,
+//                                                     quant_inds[offset]);
+//                        if( *element != element_debug[offset]) {
+//                            printf("offset: %d, *element=%.9f, debug_element=%.9f\n", offset, *element, element_debug[offset]);
+//                            printf("offset: %d, pred=%.9f, debug_pred=%.9f\n", offset, pred, prediction_debug[offset]);
+//                            printf("Quantization: %d\n", quant_inds[offset]-32768);
+//                            exit(2);
+//                        }
                     }
                 }
             }
