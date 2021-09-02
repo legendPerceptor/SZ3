@@ -205,7 +205,12 @@ int main(int argc, char **argv) {
     }
 
 
-    float eb =default_eb;
+    float eb;
+    if(regions.isSet()) {
+        eb = default_eb;
+    } else {
+        eb = eb_min;
+    }
 
     float bg = 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
@@ -219,7 +224,7 @@ int main(int argc, char **argv) {
     SZ::Compressor<float> *sz, *sz_old, *sz_region;
     if(dims.size()==3) {
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 3, 1>>(eb);
-        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 3>>(6, 0.1*eb_min);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 3>>(6, 0.1*eb);
         std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 3>>> predictors_;
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
@@ -253,7 +258,7 @@ int main(int argc, char **argv) {
         }
     } else if(dims.size()==2) {
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 2, 1>>(eb);
-        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 2>>(6, 0.1*eb_min);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 2>>(6, 0.1*eb);
         std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 2>>> predictors_;
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);
@@ -287,7 +292,7 @@ int main(int argc, char **argv) {
         }
     } else if (dims.size()==1){
         auto P_l = std::make_shared<SZ::LorenzoPredictor<float, 1, 1>>(eb);
-        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 1>>(6, 0.1*eb_min);
+        auto P_reg = std::make_shared<SZ::RegressionPredictor<float, 1>>(6, 0.1*eb);
         std::vector<std::shared_ptr<SZ::concepts::PredictorInterface<float, 1>>> predictors_;
         predictors_.push_back(P_l);
         predictors_.push_back(P_reg);

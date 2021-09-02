@@ -235,7 +235,7 @@ namespace SZ {
                 int check=0;
                 for(int j=0; j<dim; j++) {
                     int diff = location[j] - region_ebs[i].start_position[j];
-                    if(diff>0 && diff < region_ebs[i].region_length[j]) {
+                    if(diff>=0 && diff < region_ebs[i].region_length[j]) {
                         // pass the j dimension test, but still not sure if it is inside
                         check++;
                     }
