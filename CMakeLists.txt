@@ -17,7 +17,7 @@ message("ZSTD_INCLUDES:" ${ZSTD_INCLUDES})
 
 #find_library(HDF5_LIBS hdf5 HINTS "${PROJECT_SOURCE_DIR}/vendors/hdf5-1.10.1/install/lib")
 
-include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/vendors/tclap-1.4.0-rc1/include)
+include_directories(${ZSTD_INCLUDES}  ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/vendors/tclap-1.4.0-rc1/include ${PROJECT_SOURCE_DIR}/vendors/csv-parser/include)
 link_directories(${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib)
 
 set(HEADER_FILES
@@ -57,6 +57,7 @@ endif ()
 
 add_subdirectory(src)
 add_subdirectory(test)
+add_subdirectory(vendors/csv-parser)
 
 add_subdirectory(tools/hdf5-sz3)
 

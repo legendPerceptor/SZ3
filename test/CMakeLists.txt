@@ -30,4 +30,8 @@ target_link_libraries(go_write SZ3 ${ZSTD_LIBS} ${MPI_C_LIBRARIES})
 
 add_executable(sz_region sz_region.cpp)
 target_include_directories(sz_region PRIVATE ${PROJECT_SOURCE_DIR} ${ZSTD_INCLUDES} ${MPI_INCLUDE_PATH})
-target_link_libraries(sz_region SZ3 ${ZSTD_LIBS})
+target_link_libraries(sz_region SZ3 ${ZSTD_LIBS} csv)
+
+add_executable(sz_property sz_property.cpp ${PROJECT_SOURCE_DIR}/src/qcat_dataAnalysis.cpp ${PROJECT_SOURCE_DIR}/include/qcat_dataAnalysis.h)
+target_include_directories(sz_property PRIVATE ${PROJECT_SOURCE_DIR} ${ZSTD_INCLUDES} ${MPI_INCLUDE_PATH})
+target_link_libraries(sz_property SZ3 ${ZSTD_LIBS} csv)

@@ -21,6 +21,7 @@
 #include <chrono>
 #include <tclap/CmdLine.h>
 #include <fstream>
+#include "csv.hpp"
 
 //namespace fs = std::filesystem;
 static void convert(float* data, int num) {
@@ -218,7 +219,31 @@ int main(int argc, char **argv) {
     bool use_bitmap = use_bitmapArg.getValue();
 //    const size_t DIM = 3;
 
+    size_t compressed_size = 0;
+    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
 
+    size_t num = 0;
+    std::string inputFileStr = inputFilePath.getValue();
+
+    if (mode == "bg_pre") {
+        auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+        startTime = std::chrono::system_clock::now();
+        std::cout << "Read " << num << " elements\n";
+        std::cout << "Original Size: " << num * sizeof(float) << std::endl;
+        if (bigEndian.getValue()) { // convert big endian data
+            std::cout<<"converting data from bigEndian..."<<std::endl;
+            convert(data.get(), num);
+        }
+        for(int i=0;i<num;i++) {
+            if(data[i]==bg){
+                data[i]=0;
+            }
+        }
+        SZ::writefile("tmp.bg", data.get(), num);
+        endTime = std::chrono::system_clock::now();
+        std::cout << "Preprocessing Time: " << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000 << std::endl;
+        mode = "test";
+    }
 
 
     SZ::Compressor<float> *sz, *sz_old, *sz_region;
@@ -326,11 +351,8 @@ int main(int argc, char **argv) {
         }
     }
 
-    size_t compressed_size = 0;
-    std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
-    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::app);
-    size_t num = 0;
-    std::string inputFileStr = inputFilePath.getValue();
+
+    std::vector<std::string> csv_result;
     if(mode == "test" || mode == "compress") {
         auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
         std::cout << "Read " << num << " elements\n";
@@ -366,8 +388,8 @@ int main(int argc, char **argv) {
             std::cerr << "The configuration must be wrong; You can use fallback, regions, multi-range, or background!"<< std::endl;
             exit(-1);
         }
-
         endTime = std::chrono::system_clock::now();
+
         std::cout << "Compression time: "
                   //              << (double) (end.tv_sec - start.tv_sec) + (double) (end.tv_nsec - start.tv_nsec) / (double) 1000000000 << "s"
                   << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
@@ -376,11 +398,13 @@ int main(int argc, char **argv) {
         std::cout << "Compressed size = " << compressed_size << std::endl;
         std::cout << "Compression Ratio = " << num * sizeof(float) / (float) compressed_size << std::endl;
         SZ::writefile(outputFilePath.getValue().c_str(), compressed.get(), compressed_size);
-        fs << outputFilePath.getValue() << " Compression Time: "
-           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
-           << "s;"
-           << "Compression size: " << compressed_size << "; Compression ratio: "
-           << num * sizeof(float) / (float) compressed_size << "; ";
+//        fs << outputFilePath.getValue() << " Compression Time: "
+//           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+//           << "s;"
+//           << "Compression size: " << compressed_size << "; Compression ratio: "
+//           << num * sizeof(float) / (float) compressed_size << "; ";
+        csv_result.push_back(std::to_string(num * sizeof(float) / (float) compressed_size));
+        csv_result.push_back(std::to_string(double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /1000000000));
     }
     if(mode=="test" || mode=="decompress") {
         auto compressed = SZ::readfile<unsigned char>(outputFilePath.getValue().c_str(), compressed_size);
@@ -408,10 +432,10 @@ int main(int argc, char **argv) {
                   << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
                      1000000000 << "s"
                   << std::endl;
-        fs << "Decompression Time: "
-           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
-           << "s; ";
-
+//        fs << "Decompression Time: "
+//           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
+//           << "s; ";
+        csv_result.push_back(std::to_string(double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /1000000000));
         if(mode=="test") {
             auto dataV = SZ::readfile<float>(inputFileStr.c_str(), num);
             if (bigEndian.getValue()) {
@@ -470,7 +494,7 @@ int main(int argc, char **argv) {
                 delete[] rmse;
                 delete[] psnr;
                 std::cout << "Max error = " << max_err << std::endl;
-                fs << "Max error = " << max_err << std::endl;
+//                fs << "Max error = " << max_err << std::endl;
             } else {
                 std::cout << "Region Based - Num of elements: " << num << std::endl;
                 max_err = 0;
@@ -486,6 +510,10 @@ int main(int argc, char **argv) {
             }
         }
     }
+    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::trunc);
+    auto writer = csv::make_csv_writer(fs);
+    writer<< std::vector<std::string>({"CR", "CPTime", "DPTime"});
+    writer << csv_result;
     fs.close();
     return 0;
 }
