@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
     TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
-    TCLAP::ValueArg<std::string> logFilePath("l","logFile","The log file path", true, "", "string");
+    TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd, false);
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
     cmd.add(inputFilePath);
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
     cmd.add(dimensionArg);
     cmd.add(valueRange);
     cmd.add(decFilePath);
-    cmd.add(logFilePath);
+//    cmd.add(logcalculation);
     cmd.add(modeArg);
     cmd.add(regions);
     try {
@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
         std::cerr<< "error: "<<e.error() <<" for arg " << e.argId() << std::endl;
         exit(10);
     }
+    bool use_log = logcalculation.getValue();
     std::string mode = modeArg.getValue();
     if(mode=="test" || mode=="compress"){
         if(inputFilePath.getValue()=="") {
@@ -355,10 +356,20 @@ int main(int argc, char **argv) {
     std::vector<std::string> csv_result;
     if(mode == "test" || mode == "compress") {
         auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
+
         std::cout << "Read " << num << " elements\n";
         std::cout << "Original Size: " << num * sizeof(float) << std::endl;
         if (bigEndian.getValue()) { // convert big endian data
             convert(data.get(), num);
+        }
+        if(use_log) {
+            for(int i=0;i<num;i++) {
+                if(data[i] < 0) {
+                    data[i] = -log10(-data[i]);
+                } else if(data[i]>0) {
+                    data[i] = log10(data[i]);
+                }
+            }
         }
 //        std::cout<<"special before global range: "<<data[13692013]<<std::endl;
 //        for(int i=0;i<num;i++){
@@ -441,6 +452,15 @@ int main(int argc, char **argv) {
             if (bigEndian.getValue()) {
                 convert(dataV.get(), num);
             }
+            if(use_log) {
+                for(int i=0;i<num;i++) {
+                    if(dataV[i] < 0) {
+                        dataV[i] = -log10(-dataV[i]);
+                    } else if(dataV[i]>0) {
+                        dataV[i] = log10(dataV[i]);
+                    }
+                }
+            }
             float max_err = 0;
             if(valueRange.isSet()) {
                 std::cout << "Low: " << low_range << ", high: " << high_range << std::endl;
@@ -510,10 +530,10 @@ int main(int argc, char **argv) {
             }
         }
     }
-    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::trunc);
-    auto writer = csv::make_csv_writer(fs);
-    writer<< std::vector<std::string>({"CR", "CPTime", "DPTime"});
-    writer << csv_result;
-    fs.close();
+//    std::ofstream fs(logFilePath.getValue().c_str(), std::ios_base::trunc);
+//    auto writer = csv::make_csv_writer(fs);
+//    writer<< std::vector<std::string>({"CR", "CPTime", "DPTime"});
+//    writer << csv_result;
+//    fs.close();
     return 0;
 }
