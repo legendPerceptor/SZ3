@@ -22,17 +22,20 @@
 
 
 template<uint N>
-float lorenzo_test(float* data, std::array<size_t, N> dims){
-    auto P_l = std::make_shared<SZ::LorenzoPredictor<float, N, 1>>();
+float lorenzo_test(float* data, std::array<size_t, N> dims, float eb=0.1){
+    auto P_l = std::make_shared<SZ::LorenzoPredictor<float, N, 1>>(eb);
     int stride = 6;
     auto intra_block_range = std::make_shared<SZ::multi_dimensional_range<float, N>>(data, std::begin(dims),std::end(dims), 1,0);
     auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<float, N>>(data, std::begin(dims),std::end(dims), stride,0);
-    float avg_err = *(intra_block_range->begin());
-    int count = 1;
+    double avg_err = 0;
+    int nble = 1;
+    for(int i=0;i<N;i++){
+        nble *= dims[i];
+    }
     auto inter_begin = inter_block_range->begin();
     auto inter_end = inter_block_range->end();
     std::array<size_t, N> intra_block_dims;
-    double sum = 0;
+//    double sum = 0;
     for (auto block = inter_begin; block != inter_end; ++block) {
         for (int i = 0; i < intra_block_dims.size(); i++) {
             size_t cur_index = block.get_local_index(i);
@@ -49,14 +52,13 @@ float lorenzo_test(float* data, std::array<size_t, N> dims){
         auto intra_end = intra_block_range->end();
         for(auto iter = intra_begin; iter != intra_end; iter++) {
             float cur_err = P_l->estimate_error(iter);
-            count++;
-            sum += cur_err;
-            avg_err = avg_err + (cur_err - avg_err) / (float) count;
+//            sum += cur_err;
+            avg_err += cur_err / (double) nble;
         }
     }
-    sum = sum / count;
-    std::cout<<"AVG SUM:" << sum << "; avgerr" << avg_err <<std::endl;
-    return sum;
+//    sum = sum / nble;
+//    std::cout<<"AVG SUM:" << sum << "; avgerr" << avg_err <<std::endl;
+    return avg_err;
 }
 
 int main(int argc, char**argv) {
@@ -80,7 +82,7 @@ int main(int argc, char**argv) {
     size_t num = 0;
     bool use_log = logcalculation.getValue();
     auto data = SZ::readfile<float>(inputFilePath.getValue().c_str(), num);
-    std::cout<<"num: " << num <<std::endl;
+//    std::cout<<"num: " << num <<std::endl;
     if(use_log) {
         for(int i=0;i<num;i++) {
             if(data[i] < 0) {
@@ -130,7 +132,7 @@ int main(int argc, char**argv) {
     QCAT_DataProperty* property = computeProperty(QCAT_FLOAT, data.get(), num);
     std::stringstream ss;
     auto writer = csv::make_csv_writer(ss);
-    writer << std::vector<std::string>({"size", "num", "min", "max", "valueRange","avgValue", "entropy", "zeromean_variance"});
+    writer << std::vector<std::string>({"size", "num", "min", "max", "valueRange","avgValue", "entropy", "zeromean_variance", "avg_lorenzo"});
     writer << std::vector<std::string>({std::to_string(property->totalByteSize),
                                         std::to_string(property->numOfElem),
                                         std::to_string(property->minValue),
@@ -138,7 +140,8 @@ int main(int argc, char**argv) {
                                         std::to_string(property->valueRange),
                                         std::to_string(property->avgValue),
                                         std::to_string(property->entropy),
-                                        std::to_string(property->zeromean_variance)});
+                                        std::to_string(property->zeromean_variance),
+                                        std::to_string(avg_err)});
     if(debug) {
         printProperty(property);
     }

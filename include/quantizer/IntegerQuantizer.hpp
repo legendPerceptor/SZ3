@@ -249,6 +249,11 @@ namespace SZ {
             error_bound = default_eb;
         }
 
+        std::vector<RegionTuple<T>> get_regions() {
+            return region_ebs;
+        }
+
+
     private:
         std::vector<RegionTuple<T>> region_ebs;
         std::vector<T> unpred;

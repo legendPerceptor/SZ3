@@ -3,7 +3,7 @@
 
 #include "predictor/Predictor.hpp"
 #include "predictor/LorenzoPredictor.hpp"
-#include "quantizer/Quantizer.hpp"
+#include "quantizer/IntegerQuantizer.hpp"
 #include "encoder/Encoder.hpp"
 #include "lossless/Lossless.hpp"
 #include "utils/Iterator.hpp"
@@ -22,8 +22,8 @@ namespace SZ {
         virtual T *decompress_withBG(uchar const *lossless_compressed_data, size_t length, T bg, T low_range, T high_range, bool use_bitmap=false, bool preserve_sign=false,bool has_bg=false) = 0;
         virtual uchar *compress(T *data, size_t &compressed_size) =0;
         virtual T *decompress(uchar const *lossless_compressed_data, size_t length)=0;
-        virtual uchar *compress_region(T *data, size_t &compressed_size) =0;
-        virtual T *decompress_region(uchar const *lossless_compressed_data, size_t length)=0;
+        virtual uchar *compress_region(T *data, size_t &compressed_size, bool random_access=false) =0;
+        virtual T *decompress_region(uchar const *lossless_compressed_data, size_t length, bool random_access=false)=0;
     };
 
     template<class T, size_t N, class Predictor, class Quantizer, class Encoder, class Lossless>
@@ -351,7 +351,7 @@ namespace SZ {
             return dec_data.release();
         }
 
-        uchar* compress_region(T* data, size_t& compressed_size) {
+        uchar* compress_region(T* data, size_t& compressed_size, bool random_access=false) {
             auto inter_block_range = std::make_shared<SZ::multi_dimensional_range<T, N>>(data,
                                                                                          std::begin(global_dimensions),
                                                                                          std::end(global_dimensions), stride, 0);
@@ -381,28 +381,48 @@ namespace SZ {
 
                     intra_block_range->set_dimensions(intra_block_dims.begin(), intra_block_dims.end());
                     intra_block_range->set_offsets(block.get_offset());
-                    intra_block_range->set_starting_position(block.get_local_index());
+                    std::array<size_t, N> org_start = block.get_local_index();
+//                    std::array<size_t, N> random_start;
+
+                    auto intra_begin = intra_block_range->begin();
+                    auto intra_end = intra_block_range->end();
+
+                    std::array<size_t, N> location = intra_begin.get_global_index();
+                    auto regions = region_quantizer->get_regions();
+                    if(random_access){
+                        for(int i=0;i<regions.size();i++){
+                            int tmp_count = 0, tmp_count2=0;
+                            org_start = block.get_local_index();
+                            for(int j=0;j<N;j++) {
+                                if(location[j]>=regions[i].start_position[j] && (location[j] <regions[i].start_position[j] + regions[i].region_length[j])){
+                                    tmp_count++;
+                                    if(location[j] -block_size < regions[i].start_position[j]) {
+                                        tmp_count2++;
+                                        org_start[j] = 0;
+                                    }
+                                }
+                            }
+                            if(tmp_count == N){
+                                // inside and at the edge of this region
+                                break;
+                            }
+                        }
+                    }
+                    intra_block_range->set_starting_position(org_start);
                     concepts::PredictorInterface<T, N> *predictor_withfallback = &predictor;
                     if (!predictor.precompress_block(intra_block_range)) {
                         predictor_withfallback = &fallback_predictor;
                     }
                     predictor_withfallback->precompress_block_commit();
-//                    quantizer.precompress_block();
-                    auto intra_begin = intra_block_range->begin();
-                    auto intra_end = intra_block_range->end();
-//                    int offset_begin = intra_begin.get_offset();
-//                    std::vector<int> location(N);
-//                    for (size_t tmp_i=N-1; tmp_i >= 0; tmp_i--) {
-//                        location[tmp_i] = offset_begin % global_dimensions[tmp_i];
-//                        offset_begin = offset_begin / global_dimensions[tmp_i];
-//                    }
-                    std::array<size_t, N> location = intra_begin.get_global_index();
+
+
                     std::vector<size_t> location_vec(location.begin(), location.end());
                     region_quantizer->set_region_ebs(location_vec);
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
+                        T prediction_value = predictor_withfallback->predict(element);
                         quant_inds[quant_count++] = region_quantizer->quantize_and_overwrite(
-                                *element, predictor_withfallback->predict(element));
+                                *element, prediction_value);
 //                        T pred = predictor_withfallback->predict(element);
 //                        prediction_debug[offset] = pred;
 //                        quant_inds[quant_count] = quantizer.quantize_and_overwrite(
@@ -440,7 +460,7 @@ namespace SZ {
             return lossless_data;
         }
 
-        T *decompress_region(uchar const *lossless_compressed_data, const size_t length) {
+        T *decompress_region(uchar const *lossless_compressed_data, const size_t length, bool random_access=false) {
             auto compressed_data = lossless.decompress(lossless_compressed_data, length);
             uchar const *compressed_data_pos = compressed_data;
             size_t remaining_length = length;
@@ -489,15 +509,41 @@ namespace SZ {
                     }
                     intra_block_range->set_dimensions(intra_block_dims.begin(), intra_block_dims.end());
                     intra_block_range->set_offsets(block.get_offset());
-                    intra_block_range->set_starting_position(block.get_local_index());
+
+                    std::array<size_t, N> org_start = block.get_local_index();
+//                    std::array<size_t, N> random_start;
+
+                    auto intra_begin = intra_block_range->begin();
+                    auto intra_end = intra_block_range->end();
+
+                    std::array<size_t, N> location = intra_begin.get_global_index();
+                    auto regions = region_quantizer->get_regions();
+                    if(random_access){
+                        for(int i=0;i<regions.size();i++){
+                            int tmp_count = 0, tmp_count2=0;
+                            org_start = block.get_local_index();
+                            for(int j=0;j<N;j++) {
+                                if(location[j]>=regions[i].start_position[j] && (location[j] <regions[i].start_position[j] + regions[i].region_length[j])){
+                                    tmp_count++;
+                                    if(location[j] -block_size < regions[i].start_position[j]) {
+                                        tmp_count2++;
+                                        org_start[j] = 0;
+                                    }
+                                }
+                            }
+                            if(tmp_count == N){
+                                // inside and at the edge of this region
+                                break;
+                            }
+                        }
+                    }
+                    intra_block_range->set_starting_position(org_start);
 
                     concepts::PredictorInterface<T, N> *predictor_withfallback = &predictor;
                     if (!predictor.predecompress_block(intra_block_range)) {
                         predictor_withfallback = &fallback_predictor;
                     }
-                    auto intra_begin = intra_block_range->begin();
-                    auto intra_end = intra_block_range->end();
-                    std::array<size_t, N> location = intra_begin.get_global_index();
+
                     std::vector<size_t> location_vec(location.begin(), location.end());
                     region_quantizer = (RegionBasedQuantizer<T>*)(&quantizer);
                     region_quantizer->set_region_ebs(location_vec);

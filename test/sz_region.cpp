@@ -101,6 +101,7 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd, false);
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
+    TCLAP::SwitchArg random_accessArg("a", "random", "Independent access between regions", cmd, false);
     cmd.add(inputFilePath);
     cmd.add(outputFilePath);
     cmd.add(dimensionArg);
@@ -151,6 +152,7 @@ int main(int argc, char **argv) {
     float eb_min = 10000;
     float default_eb;
     bool fallback = fall_back.getValue();
+    bool random_access = random_accessArg.getValue();
     float low_range, high_range;
     if(valueRange.isSet() && !regions.isSet()) {
         std::string ranges = valueRange.getValue();
@@ -354,6 +356,7 @@ int main(int argc, char **argv) {
 
 
     std::vector<std::string> csv_result;
+    std::shared_ptr<bool[]> negative;
     if(mode == "test" || mode == "compress") {
         auto data = SZ::readfile<float>(inputFileStr.c_str(), num);
 
@@ -363,10 +366,13 @@ int main(int argc, char **argv) {
             convert(data.get(), num);
         }
         if(use_log) {
+            negative = std::shared_ptr<bool[]>(new bool[num]);
             for(int i=0;i<num;i++) {
                 if(data[i] < 0) {
-                    data[i] = -log10(-data[i]);
+                    negative[i] = true;
+                    data[i] = log10(-data[i]);
                 } else if(data[i]>0) {
+                    negative[i] = false;
                     data[i] = log10(data[i]);
                 }
             }
@@ -389,7 +395,7 @@ int main(int argc, char **argv) {
         } else if (valueRange.isSet() && !regions.isSet() && !has_bg) {
             compressed.reset(sz->compress(data.get(), compressed_size));
         } else if (regions.isSet() && !valueRange.isSet() && !has_bg) {
-            compressed.reset(sz_region->compress_region(data.get(), compressed_size));
+            compressed.reset(sz_region->compress_region(data.get(), compressed_size,random_access));
         } else if (valueRange.isSet() && has_bg) {
             compressed.reset(
                     sz->compress_withBG(data.get(), compressed_size, bg, low_range, high_range, use_bitmap,
@@ -426,7 +432,7 @@ int main(int argc, char **argv) {
         } else if (valueRange.isSet() && !regions.isSet() && !has_bg) {
             dec_data.reset(sz->decompress(compressed.get(), compressed_size));
         } else if(regions.isSet() && !valueRange.isSet() && !has_bg){
-            dec_data.reset(sz_region->decompress_region(compressed.get(), compressed_size));
+            dec_data.reset(sz_region->decompress_region(compressed.get(), compressed_size, random_access));
         } else if(valueRange.isSet() && has_bg){
             dec_data.reset(
                     sz->decompress_withBG(compressed.get(), compressed_size, bg, low_range, high_range, use_bitmap,
@@ -435,6 +441,16 @@ int main(int argc, char **argv) {
             std::cerr << "The configuration must be wrong; You can use fallback, regions, multi-range, or background!"<< std::endl;
             exit(-1);
         }
+        if(use_log) {
+            for(int i=0;i<num;i++) {
+                if(negative[i]) {
+                    dec_data[i] = -pow(10.0, dec_data[i]);
+                } else {
+                    dec_data[i] = pow(10.0, dec_data[i]);
+                }
+            }
+        }
+
         SZ::writefile(decFilePath.getValue().c_str(), dec_data.get(), num);
 //    err = clock_gettime(CLOCK_REALTIME, &end);
         endTime = std::chrono::system_clock::now();
@@ -455,9 +471,11 @@ int main(int argc, char **argv) {
             if(use_log) {
                 for(int i=0;i<num;i++) {
                     if(dataV[i] < 0) {
-                        dataV[i] = -log10(-dataV[i]);
+                        dataV[i] = log10(-dataV[i]);
+                        dec_data[i] = log10(-dec_data[i]);
                     } else if(dataV[i]>0) {
                         dataV[i] = log10(dataV[i]);
+                        dec_data[i] = log10(dec_data[i]);
                     }
                 }
             }
@@ -493,13 +511,17 @@ int main(int argc, char **argv) {
                     sum += nums[j];
                 }
                 std::cout << "total num: " << sum << std::endl;
+                std::cout<<"dmax: "<< dmax << "; dmin: " << dmin << std::endl;
+                float rmse_overall = 0, psnr_overall = 0;
                 for (int i = 0; i < num; i++) {
                     for (int j = 0; j < ebs.size(); j++) {
+                        float diff = dataV[i] - dec_data[i];
                         if (dataV[i] >= ebs[j].low && dataV[i] < ebs[j].high) {
-                            float diff = dataV[i] - dec_data[i];
+
                             float t = diff * diff / nums[j];
                             rmse[j] += t;
                         }
+                        rmse_overall += diff * diff / num;
                     }
                     if (dataV[i] - dec_data[i] > max_err || dataV[i] - dec_data[i] < -max_err) {
                         max_err = (dataV[i] > dec_data[i]) ? dataV[i] - dec_data[i] : dec_data[i] - dataV[i];
@@ -511,9 +533,11 @@ int main(int argc, char **argv) {
                     std::cout << "[" << ebs[j].low << ", " << ebs[j].high << "] RMSE: " << rmse[j] << ", PSNR: "
                               << psnr[j] << std::endl;
                 }
+                psnr_overall = 20 * log10(dmax - dmin) - 10 * log10(rmse_overall);
                 delete[] rmse;
                 delete[] psnr;
                 std::cout << "Max error = " << max_err << std::endl;
+                std::cout<<" RMSE_OVERALL: " <<sqrt(rmse_overall)<< "; PSNR_OVERALL: "<< psnr_overall << std::endl;
 //                fs << "Max error = " << max_err << std::endl;
             } else {
                 std::cout << "Region Based - Num of elements: " << num << std::endl;

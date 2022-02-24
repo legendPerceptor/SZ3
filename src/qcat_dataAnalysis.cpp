@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 //#include <rw.h>
+#include "predictor/LorenzoPredictor.hpp"
 
 double computeEntropy(int dataType, void* data, size_t nbEle)
 {
@@ -45,6 +46,7 @@ QCAT_DataProperty* computeProperty(int dataType, void* data, size_t nbEle)
 {
     QCAT_DataProperty* property = (QCAT_DataProperty*)malloc(sizeof(QCAT_DataProperty));
     memset(property, 0, sizeof(QCAT_DataProperty));
+
 
     property->dataType = dataType;
     property->numOfElem = nbEle;

@@ -15,7 +15,7 @@ namespace SZ {
                     block_size = 128;
                     break;
                 case 2:
-                    block_size = 16;
+                    block_size = 32;
                     break;
                 default:
                     // >= 3D
