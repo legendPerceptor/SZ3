@@ -414,10 +414,11 @@ namespace SZ {
             T last_eb = ebs[ebs.size()-1].eb;
             T first_high = ebs[0].low;
             T first_eb = ebs[0].eb;
-            ebs.push_back(RangeTuple<T>(last_low, 10000, last_eb));
-            quant_range.push_back((int)(10000-last_low)/(2*last_eb));
-            ebs.insert(ebs.begin(),RangeTuple<T>(-10000, first_high, first_eb));
-            quant_range.insert(quant_range.begin(), (int)(first_high+10000)/(2*first_eb));
+            const int LARGE_ENOUGH_VALUE = 1000000;
+            ebs.push_back(RangeTuple<T>(last_low, LARGE_ENOUGH_VALUE, last_eb));
+            quant_range.push_back((int)(LARGE_ENOUGH_VALUE-last_low)/(2*last_eb));
+            ebs.insert(ebs.begin(),RangeTuple<T>(-LARGE_ENOUGH_VALUE, first_high, first_eb));
+            quant_range.insert(quant_range.begin(), (int)(first_high+LARGE_ENOUGH_VALUE)/(2*first_eb));
             range_size = ebs.size();
             last_data_range = -1;
         }
@@ -606,7 +607,7 @@ namespace SZ {
             if(decompressed_data > ebs[data_index].high){
                 if(tmp==quant_range[data_index]){
                     tmp-=1;
-                    ebs[data_index].low+ebs[data_index].eb + tmp * (2*ebs[data_index].eb);
+                    decompressed_data = ebs[data_index].low+ebs[data_index].eb + tmp * (2*ebs[data_index].eb);
                 }else {
                     decompressed_data = ebs[data_index].high - ebs[data_index].eb;
                 }

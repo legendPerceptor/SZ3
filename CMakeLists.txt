@@ -10,6 +10,7 @@ message("The Project Source DIR:" ${PROJECT_SOURCE_DIR})
 
 
 find_package(MPI)
+message("MPI found:" ${MPI})
 find_library(ZSTD_LIBS zstd HINTS "${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib")
 set(ZSTD_INCLUDES "${PROJECT_SOURCE_DIR}/tools/zstd-1.4.5/lib/install/usr/local/include")
 message("ZSTD_LIBS:" ${ZSTD_LIBS})

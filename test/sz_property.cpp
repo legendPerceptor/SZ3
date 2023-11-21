@@ -35,7 +35,7 @@ float lorenzo_test(float* data, std::array<size_t, N> dims, float eb=0.1){
     auto inter_begin = inter_block_range->begin();
     auto inter_end = inter_block_range->end();
     std::array<size_t, N> intra_block_dims;
-//    double sum = 0;
+    double sum = 0;
     for (auto block = inter_begin; block != inter_end; ++block) {
         for (int i = 0; i < intra_block_dims.size(); i++) {
             size_t cur_index = block.get_local_index(i);
@@ -52,11 +52,11 @@ float lorenzo_test(float* data, std::array<size_t, N> dims, float eb=0.1){
         auto intra_end = intra_block_range->end();
         for(auto iter = intra_begin; iter != intra_end; iter++) {
             float cur_err = P_l->estimate_error(iter);
-//            sum += cur_err;
+            sum += cur_err;
             avg_err += cur_err / (double) nble;
         }
     }
-//    sum = sum / nble;
+    sum = sum / nble;
 //    std::cout<<"AVG SUM:" << sum << "; avgerr" << avg_err <<std::endl;
     return avg_err;
 }
@@ -70,7 +70,7 @@ int main(int argc, char**argv) {
     }
     TCLAP::CmdLine cmd1("SZ3 Data Property", ' ', "0.1");
     TCLAP::ValueArg<std::string> inputFilePath("f","file", "The input data source file path",false,"","string");
-    TCLAP::SwitchArg bigEndian("e", "bigendian", "Whether it's big endian", cmd1, false);
+//    TCLAP::SwitchArg bigEndian("e", "bigendian", "Whether it's big endian", cmd1, false);
     TCLAP::SwitchArg debugArg("b", "debug", "Print additional information", cmd1, false);
     TCLAP::ValueArg<std::string> dimensionArg("d", "dimension", "the dimention of data", false, "", "string");
     TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd1, false);

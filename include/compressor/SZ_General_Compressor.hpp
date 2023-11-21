@@ -95,11 +95,10 @@ namespace SZ {
                                 quant_inds[offset] = 2 * quantizer.get_radius() + 1;
                             }
                             tmp = my_lorenzo.predict(element);
-//                        tmp = 0;
+                            tmp = 0;
                             if (tmp >= low_range && tmp <= high_range) {
                                 *element = tmp;
                             } else {
-//                        tmp = (low_range + high_range)/2;
                                 tmp = 0;
                                 *element = tmp;
                             }
@@ -157,7 +156,7 @@ namespace SZ {
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
                         if (has_bg && !use_bitmap && quant_inds[offset] == 2 * quantizer.get_radius() + 1) {
-                            *element = predictor_withfallback->predict(element);
+                            *element = my_lorenzo.predict(element);
                         } else {
                             T pred = predictor_withfallback->predict(element);
                             prediction_debug[offset] = pred;
@@ -298,8 +297,7 @@ namespace SZ {
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
                         if(!use_bitmap && quant_inds[offset]==2 * quantizer.get_radius() +1){
-                            *element = predictor_withfallback->predict(element);
-//                            *element = bg;
+                            *element = my_lorenzo.predict(element);
                         }else {
                             T pred = predictor_withfallback->predict(element);
                             if(pred != prediction_debug[offset]){

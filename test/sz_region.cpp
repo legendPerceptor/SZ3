@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg bigEndian("e", "bigEndian", "Whether it's big endian", cmd, false);
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
-    TCLAP::SwitchArg hasBackgroundData("b", "backgroundData", "Whether there is background data", cmd, false);
+    TCLAP::ValueArg<std::string> hasBackgroundData("b", "background", "set the background data to be this value", false, "", "string");
     TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd, false);
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
@@ -108,6 +108,7 @@ int main(int argc, char **argv) {
     cmd.add(valueRange);
     cmd.add(decFilePath);
 //    cmd.add(logcalculation);
+    cmd.add(hasBackgroundData);
     cmd.add(modeArg);
     cmd.add(regions);
     try {
@@ -216,8 +217,11 @@ int main(int argc, char **argv) {
         eb = eb_min;
     }
 
-    float bg = 1.0000000e+35;
-    bool has_bg = hasBackgroundData.getValue();
+    float bg = -99999;
+    bool has_bg = hasBackgroundData.isSet() && mode != "bg_pre";
+    if(hasBackgroundData.isSet()) {
+        bg = std::stof(hasBackgroundData.getValue());
+    }
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
 //    const size_t DIM = 3;
@@ -238,11 +242,12 @@ int main(int argc, char **argv) {
             convert(data.get(), num);
         }
         for(int i=0;i<num;i++) {
-            if(data[i]==bg){
+            if(data[i] - bg < std::numeric_limits<float>::epsilon()){
                 data[i]=0;
             }
         }
         SZ::writefile("tmp.bg", data.get(), num);
+        inputFileStr = "tmp.bg";
         endTime = std::chrono::system_clock::now();
         std::cout << "Preprocessing Time: " << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000 << std::endl;
         mode = "test";

@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     }
     float eb =eb_min;
     float low_range = (*ebs.begin()).low, high_range = ebs[ebs.size()-1].high;
-    float bg = 1.0000000e+35;
+    float bg = -99999; // 1.0000000e+35;
     bool has_bg = hasBackgroundData.getValue();
     bool preserve_sign = preserve_signArg.getValue();
     bool use_bitmap = use_bitmapArg.getValue();
