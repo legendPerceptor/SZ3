@@ -94,13 +94,10 @@ namespace SZ {
                             } else {
                                 quant_inds[offset] = 2 * quantizer.get_radius() + 1;
                             }
-                            tmp = my_lorenzo.predict(element);
-                            tmp = 0;
-                            if (tmp >= low_range && tmp <= high_range) {
-                                *element = tmp;
-                            } else {
-                                tmp = 0;
-                                *element = tmp;
+                            *element = my_lorenzo.predict(element);
+//                            tmp = 0;
+                            if (*element < low_range || *element > high_range) {
+                                *element = 0;
                             }
                         }
                         if (preserve_sign) {
@@ -156,14 +153,13 @@ namespace SZ {
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
                         if (has_bg && !use_bitmap && quant_inds[offset] == 2 * quantizer.get_radius() + 1) {
-                            *element = my_lorenzo.predict(element);
+                            *element = predictor_withfallback->predict(element);
                         } else {
                             T pred = predictor_withfallback->predict(element);
                             prediction_debug[offset] = pred;
-                            quant_inds[quant_count] = quantizer.quantize_and_overwrite(
+                            quant_inds[offset] = quantizer.quantize_and_overwrite(
                                     *element, pred);
                             element_debug[offset] = *element;
-                            quant_count++;
                         }
                     }
                 }
@@ -297,7 +293,10 @@ namespace SZ {
                     for (auto element = intra_begin; element != intra_end; ++element) {
                         int offset = element.get_offset();
                         if(!use_bitmap && quant_inds[offset]==2 * quantizer.get_radius() +1){
-                            *element = my_lorenzo.predict(element);
+                            *element = predictor_withfallback->predict(element);
+//                            if(*element < low_range || *element > high_range) {
+//                                *element = 0;
+//                            }
                         }else {
                             T pred = predictor_withfallback->predict(element);
                             if(pred != prediction_debug[offset]){
@@ -306,7 +305,7 @@ namespace SZ {
                                 exit(1);
                             }
                             *element = quantizer.recover(pred,
-                                                         *(quant_inds_pos++));
+                                                         *(quant_inds_pos + offset));
                             if( *element != element_debug[offset]) {
                                 printf("offset: %d, *element=%.9f, debug_element=%.9f\n", offset, *element, element_debug[offset]);
                                 printf("offset: %d, pred=%.9f, debug_pred=%.9f\n", offset, pred, prediction_debug[offset]);
