@@ -77,7 +77,9 @@ endif ()
 #if (BUILD_SZ3_BINARY)
 add_subdirectory(tools/sz3)
 add_subdirectory(tools/sz3c)
-#endif ()
+
+add_subdirectory(tools/sz3-split)
+
 
 option(BUILD_H5Z_FILTER "build the H5Z-SZ3 filter" OFF)
 if (BUILD_H5Z_FILTER)
