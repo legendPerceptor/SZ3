@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <chrono>
 
 namespace SZ {
 
