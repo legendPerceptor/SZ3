@@ -48,45 +48,36 @@ static void printData(float* data) {
     }
 }
 
+const std::string help_info = R"(
+Additional Help Information for sz_region
+
+Both range and region based compression are included in the sz_region executable.
+
+Examples:
+
+Set error bound 0.2 for range [-1, 0.98), error bound 0.001 for range [0.98, 1.02),
+and error bound 0.01 for range [1.02, 10) for the Katrina dataset.
+
+sz_region -i katrina.bin -c katrina.bin.sz -q katrina.bin.out \
+-r "-1 0.98 0.2; 0.98 1.02 0.001; 1.02 10 0.01;" -d "417642 162;" -m test
+
+For the QMCPACK dataset of dimension (33120, 69, 69), we set error bound 0.01 for range [-17,-8),
+error bound 0.1 for range [-8, -5), and error bound 1 for range [-5, 17).
+
+sz_region -i QMCPACK.f32 -c QMCPACK.sz -q QMCPACK.dp \
+-r "-17 -8 0.01; -8 -5 0.1; -5 17 1;" -d "33120 69 69;" -m test
+
+For region based compression, the format is as follows: default_error_bound>x_lower y_lower z_lower:x_length y_length z_length error_bound.
+
+sz_region -i CLDHGH_1_1800_3600.dat -c CLDHGH.sz -q CLDHGH.dp \
+--region "0.001>5 5 5: 8 10 12 0.1; 20 20 20: 90 90 90 0.01;" -d "1800 3600;" -l log.txt -m test
+)";
+
 int main(int argc, char **argv) {
     bool FromFile = false;
     std::vector<std::string> myargv;
-    if(argc<=2) {
-        FromFile = true;
-        std::fstream f;
-        if(argc==2) {
-            f.open(argv[1], std::ios::in);
-        }else if(argc==1) {
-            f.open("sz3.config", std::ios::in);
-        }
-        if(f.fail()){
-            std::cerr<< "Please make sure the config file exists!\n "
-                     << "Use commandline arguments or config file\n"
-                     << "The default config file is sz3.config"<<std::endl;
-            exit(5);
-        }
-        std::stringstream strStream;
-        strStream << f.rdbuf();
-        std::string tmp;
-        while(strStream >> tmp){
-            if(tmp[0]=='\"'){
-                std::string t=tmp.substr(1, tmp.size()-1);
-                do {
-                    strStream >> tmp;
-                    size_t a = tmp.find('\"');
-                    if(a !=std::string::npos){
-                        t += ' ' + tmp.substr(0, a);
-                        break;
-                    }
-                    t+=' ' + tmp;
-                } while(strStream);
-                myargv.push_back(t);
-            }else {
-                myargv.push_back(tmp);
-            }
-        }
-    }
-    TCLAP::CmdLine cmd("SZ3 Compress/Decompress tests", ' ', "0.1");
+
+    TCLAP::CmdLine cmd(help_info, ' ', "0.1");
     TCLAP::ValueArg<std::string> inputFilePath("i","input", "The input data source file path",false,"","string");
     TCLAP::ValueArg<std::string> outputFilePath("c", "compress", "The compressed data output file path", true, "", "string");
 //    TCLAP::MultiArg<int> dimension("d", "dimension", "the dimension of data",true,"multiInt");
@@ -100,6 +91,7 @@ int main(int argc, char **argv) {
     TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
     TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd, false);
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
+    TCLAP::ValueArg<std::string> from_file_arg("", "cmd_from_file", "The commands should be read from the specified file", false, "", "string");
     TCLAP::ValueArg<std::string> modeArg("m", "mode", "The mode of the program (test, compress, decompress)", false, "test", "string");
     TCLAP::SwitchArg random_accessArg("a", "random", "Independent access between regions", cmd, false);
     cmd.add(inputFilePath);
@@ -112,7 +104,37 @@ int main(int argc, char **argv) {
     cmd.add(modeArg);
     cmd.add(regions);
     try {
-        if(FromFile){
+        if(from_file_arg.isSet()){
+
+            std::fstream f;
+            f.open(from_file_arg.getValue(), std::ios::in);
+            if(f.fail()){
+                std::cerr<< "Please make sure the command config file exists!\n "
+                        << "Use commandline arguments or config file\n"<<std::endl;
+                std::cout << help_info << std::endl;
+                exit(5);
+            }
+            std::stringstream strStream;
+            strStream << f.rdbuf();
+            std::string tmp;
+            while(strStream >> tmp){
+                if(tmp[0]=='\"'){
+                    std::string t=tmp.substr(1, tmp.size()-1);
+                    do {
+                        strStream >> tmp;
+                        size_t a = tmp.find('\"');
+                        if(a !=std::string::npos){
+                            t += ' ' + tmp.substr(0, a);
+                            break;
+                        }
+                        t+=' ' + tmp;
+                    } while(strStream);
+                    myargv.push_back(t);
+                }else {
+                    myargv.push_back(tmp);
+                }
+            }
+
             char** arr = new char*[myargv.size()+1];
             arr[0] = new char[strlen(argv[0])+1];
             strcpy(arr[0], argv[0]);
@@ -128,6 +150,7 @@ int main(int argc, char **argv) {
         std::cerr<< "error: "<<e.error() <<" for arg " << e.argId() << std::endl;
         exit(10);
     }
+
     bool use_log = logcalculation.getValue();
     std::string mode = modeArg.getValue();
     if(mode=="test" || mode=="compress"){
