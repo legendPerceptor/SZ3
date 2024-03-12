@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     TCLAP::SwitchArg use_bitmapArg("p","bitmap","Whether to use the bitmap", cmd, false);
     TCLAP::SwitchArg preserve_signArg("s", "preserveSign","Whether to preserve sign", cmd, false);
     TCLAP::ValueArg<std::string> hasBackgroundData("b", "background", "set the background data to be this value", false, "", "string");
-    TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", true, "", "string");
+    TCLAP::ValueArg<std::string> decFilePath("q", "decFile", "The decompressed data file", false, "", "string");
     TCLAP::SwitchArg logcalculation("l", "log", "Whether use the log before anything", cmd, false);
     TCLAP::SwitchArg fall_back("f", "fallback", "Whether to use old SZ3 compressor", cmd, false);
     TCLAP::ValueArg<std::string> from_file_arg("", "cmd_from_file", "The commands should be read from the specified file", false, "", "string");
