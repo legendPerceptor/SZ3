@@ -252,7 +252,10 @@ int main(int argc, char **argv) {
     size_t compressed_size = 0;
     std::chrono::time_point<std::chrono::system_clock> startTime, endTime;
 
-    size_t num = 0;
+    size_t num = 1;
+    for(unsigned long dim : dims) {
+        num *= dim;
+    }
     std::string inputFileStr = inputFilePath.getValue();
 
     if (mode == "bg_pre") {
@@ -487,6 +490,7 @@ int main(int argc, char **argv) {
                   << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /
                      1000000000 << "s"
                   << std::endl;
+        std::cout << "Decompression Num of elements:" << num << std::endl;
 //        fs << "Decompression Time: "
 //           << double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) / 1000000000
 //           << "s; ";
