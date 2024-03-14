@@ -454,6 +454,7 @@ int main(int argc, char **argv) {
         csv_result.push_back(std::to_string(num * sizeof(float) / (float) compressed_size));
         csv_result.push_back(std::to_string(double(std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()) /1000000000));
     }
+    std::cout << "num: " << num << std::endl;
     if(mode=="test" || mode=="decompress") {
         auto compressed = SZ::readfile<unsigned char>(outputFilePath.getValue().c_str(), compressed_size);
         startTime = std::chrono::system_clock::now();

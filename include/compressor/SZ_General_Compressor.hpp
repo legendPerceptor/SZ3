@@ -458,6 +458,7 @@ namespace SZ {
         }
 
         T *decompress_region(uchar const *lossless_compressed_data, const size_t length, bool random_access=false) {
+            region_quantizer = (RegionBasedQuantizer<T>*)(&quantizer);
             auto compressed_data = lossless.decompress(lossless_compressed_data, length);
             uchar const *compressed_data_pos = compressed_data;
             size_t remaining_length = length;
