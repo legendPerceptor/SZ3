@@ -251,9 +251,11 @@ namespace sz3_split {
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << std::endl;
             }
             size_t file_size = (size_t)dimension[0] * (size_t)dimension[1] * (size_t)dimension[2] * sizeof(TYPE);
+            size_t compressed_size = fin.tellg();
             std::cout << "Congratulations! Deompression completed! Total file size decompressed: " << file_size / 1024 / 1024 << " MB;\n"
                       << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
-            std::cout << "compression_time: " << total_decompress_time << ", read time: " << total_read_time
+            double cr = (double)file_size / (double) compressed_size;
+            std::cout << "compression ratio:" << std::fixed << std::setprecision(2) << cr << ", compression_time: " << total_decompress_time << ", read time: " << total_read_time
                       << ", write time: " << total_write_time << std::endl;
         } else {
             conf.setDims(dimension.begin(), dimension.end());
