@@ -162,7 +162,7 @@ namespace sz3_split {
                 std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
             }
-            size_t file_size = dimension[0] * dimension[1] * dimension[2] * sizeof(TYPE);
+            size_t file_size = (size_t)dimension[0] * (size_t)dimension[1] * (size_t)dimension[2] * sizeof(TYPE);
             std::cout << "Congratulations! Compression completed! Total file size compressed: " << file_size / 1024 / 1024 << " MB;\n"
                       << "Total compressed file size generated: " << fout.tellp() / 1024 /1024 << "MB;" << std::endl
                       << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
@@ -250,7 +250,7 @@ namespace sz3_split {
                 std::cout << "Chunk " << i << " compression completed! Time elasped: " << decompress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << std::endl;
             }
-            size_t file_size = dimension[0] * dimension[1] * dimension[2] * sizeof(TYPE);
+            size_t file_size = (size_t)dimension[0] * (size_t)dimension[1] * (size_t)dimension[2] * sizeof(TYPE);
             std::cout << "Congratulations! Deompression completed! Total file size decompressed: " << file_size / 1024 / 1024 << " MB;\n"
                       << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
             std::cout << "compression_time: " << total_decompress_time << ", read time: " << total_read_time
