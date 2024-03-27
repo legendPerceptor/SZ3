@@ -5,30 +5,42 @@
 #include <iostream>
 #include <cstdlib>
 #include <vector>
+#include <cstdint>
 #include "SZ3/api/sz.hpp"
 
 namespace sz3_split {
 
     void
     parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_file, std::string &output_file,
-                         std::vector<int> &data_dimension, float& eb) {
+                         std::vector<int> &data_dimension, float& eb, bool& is_float64, std::string& mode, int& depth) {
         optind = 1;
         const char *opt_index = "ht:i:d:e:o:";
+        const int FLOAT_64 = 1008;
+        const int MODE = 1009;
+        const int DEPTH = 1010;
         struct option opts[] = {
                 {"threads",    required_argument, nullptr, 't'},
                 {"help",       no_argument,       nullptr, 'h'},
                 {"input",      required_argument, nullptr, 'i'},
                 {"output", required_argument, nullptr, 'o'},
                 {"errorbound", required_argument, nullptr, 'e'},
-                {"dimension",  required_argument, nullptr, 'd'}
+                {"dimension",  required_argument, nullptr, 'd'},
+                {"float64", required_argument, nullptr, FLOAT_64},
+                {"mode", required_argument, nullptr, MODE},
+                {"depth", required_argument, nullptr, DEPTH}
         };
-        std::string compress_helper_info = "Usage: sz3_split compress [options]\n"
+        depth = 1;
+        std::string compress_helper_info = "Usage: sz3_split (de)compress [options]\n"
                                            "options:  --threads/-t     INT   number of threads, default is 1\n"
                                            "          --input/-i       STR   the RAW file/compressed file\n"
                                            "          --output/-o      STR   the compressed file/decompressed file location\n"
                                            "          --help/-h              print this help information\n"
                                            "          --dimension/-d   STR   the data dimension of the file, e.g., 256 256 512\n"
-                                           "          --errorbound/-e  FLOAT the error bound to use in compression\n";
+                                           "          --errorbound/-e  FLOAT the error bound to use in compression\n"
+                                           "          --float64              the default is float32 for each datapoint, this param changes it to float64\n"
+                                           "          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' for direct compression\n"
+                                           "          --depth          INT   select the layer depth in layer-by-layer compression\n";
+        is_float64 = false; // default is float32
         int c;
         while ((c = getopt_long(argc, argv, opt_index, opts, nullptr)) != -1) {
             switch (c) {
@@ -53,6 +65,15 @@ namespace sz3_split {
                     break;
                 case 'o':
                     output_file = optarg;
+                    break;
+                case FLOAT_64:
+                    is_float64 = true;
+                    break;
+                case MODE:
+                    mode = optarg;
+                    break;
+                case DEPTH:
+                    depth = std::stoi(optarg);
                     break;
                 default:
                     std::cerr << "Usage: compress/decompress/test\n";
@@ -84,27 +105,171 @@ namespace sz3_split {
         conf.absErrorBound = 1E-3; // absolute error bound 1e-3
         return conf;
     }
+    template<typename TYPE>
+    int compress_impl(const std::string& input_file, const std::string& output_file, std::vector<int> dimension, TYPE eb, const std::string& mode, int depth) {
+        SZ3::Config conf = defaultConfig();
+
+        if(dimension.size() == 3 && mode == "layer") {
+            if (depth == 1) {
+                conf.setDims(dimension.begin(), dimension.end() - 1);
+            } else {
+                std::vector<int> chunk_dimension = {dimension[0], dimension[1], depth};
+                conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
+            }
+            conf.absErrorBound = eb;
+            std::ifstream fin(input_file.c_str(), std::ios::binary);
+            if(!fin.is_open()) {
+                std::cerr << "Error opening the file: " << input_file.c_str() << std::endl;
+                return -1;
+            }
+//            std::streampos read_start = 0;
+            int chunk_size = sizeof(TYPE) * conf.num;
+            std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
+            if(!fout.is_open()) {
+                std::cerr << "Error opening the file: " << output_file.c_str() << std::endl;
+                return -1;
+            }
+            SZ3::Timer total_timer(true);
+            SZ3::Timer temp(false);
+            double total_read_time = 0, total_write_time = 0, total_compress_time = 0;
+            int num_iterations = dimension[2] / depth;
+            int leftover = dimension[2] % depth;
+            if(leftover > 0) {
+                num_iterations += 1;
+            }
+            for(int i = 0;i<num_iterations;i++) {
+                if(i == num_iterations - 1 && leftover > 0) {
+                    std::vector<int> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
+                }
+                std::vector<TYPE> buffer(conf.num);
+//                fin.seekg(read_start);
+                temp.start();
+                fin.read(reinterpret_cast<char *>(buffer.data()), chunk_size);
+                total_read_time += temp.stop();
+//                read_start += chunk_size;
+                size_t outSize;
+                SZ3::Timer timer(true);
+                char *compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+                double compress_time = timer.stop();
+                total_compress_time += compress_time;
+                auto compresed_chunk_size = static_cast<int64_t>(outSize);
+                temp.start();
+                fout.write(reinterpret_cast<const char*>(&compresed_chunk_size), sizeof(int64_t));
+                fout.write(reinterpret_cast<const char*>(compressedData), compresed_chunk_size);
+                fout.flush();
+                total_write_time += temp.stop();
+//                std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
+//                          << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
+            }
+            size_t file_size = dimension[0] * dimension[1] * dimension[2] * sizeof(TYPE);
+            std::cout << "Congratulations! Compression completed! Total file size compressed: " << file_size / 1024 / 1024 << " MB;\n"
+                      << "Total compressed file size generated: " << fout.tellp() / 1024 /1024 << "MB;" << std::endl
+                      << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
+            double cr = (double)file_size / (double)fout.tellp();
+            std::cout << "compression ratio:" << std::fixed << std::setprecision(2) << cr <<", compression_time: " << total_compress_time << ", read time: " << total_read_time
+                      << ", write time: " << total_write_time << std::endl;
+        } else {
+            // 300 is the fastest dimension
+            conf.setDims(dimension.begin(), dimension.end());
+            conf.absErrorBound = eb;
+            std::vector<TYPE> buffer(conf.num);
+            SZ3::readfile<TYPE>(input_file.c_str(), conf.num, buffer.data());
+            size_t outSize;
+            SZ3::Timer timer(true);
+            char *compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+            double compress_time = timer.stop();
+            std::cout << "Compression completed! Time elasped: " << compress_time << std::endl;
+            SZ3::writefile(output_file.c_str(), compressedData, outSize);
+            printf("compression ratio = %.2f \n", (double) conf.num * 1.0 * sizeof(TYPE) / (double) outSize);
+            printf("compression time = %f\n", compress_time);
+            printf("compressed data file = %s\n", output_file.c_str());
+        }
+        return 0;
+    }
 
     int compress(int argc, char **argv) {
         int threads;
         std::vector<int> dimension;
         std::string input_file, output_file;
         float eb;
-        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb);
+        bool isfloat64;
+        std::string mode;
+        int depth;
+        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
+        if(isfloat64){
+            return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
+        }else{
+            return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+        }
+    }
+
+    template<typename TYPE>
+    int decompress_impl(const std::string& input_file, const std::string& output_file, std::vector<int> dimension, TYPE eb, const std::string& mode, int depth) {
         SZ3::Config conf = defaultConfig(); // 300 is the fastest dimension
-        conf.setDims(dimension.begin(), dimension.end());
-        conf.absErrorBound = eb;
-        auto *data = new float[conf.num];
-        SZ3::readfile<float>(input_file.c_str(), conf.num, data);
-        size_t outSize;
-        SZ3::Timer timer(true);
-        char *compressedData = SZ_compress(conf, data, outSize);
-        double compress_time = timer.stop();
-        std::cout << "Compression completed! Time elasped: " << compress_time << std::endl;
-        SZ3::writefile(output_file.c_str(), compressedData, outSize);
-        printf("compression ratio = %.2f \n", (double)conf.num * 1.0 * sizeof(float) / (double)outSize);
-        printf("compression time = %f\n", compress_time);
-        printf("compressed data file = %s\n", output_file.c_str());
+        if (dimension.size() == 3 && mode == "layer") {
+            if (depth == 1) {
+                conf.setDims(dimension.begin(), dimension.end() - 1);
+            } else {
+                std::vector<int> chunk_dimension = {dimension[0], dimension[1], depth};
+                conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
+            }
+            conf.absErrorBound = eb;
+            std::ifstream fin(input_file.c_str(), std::ios::binary);
+            if(!fin.is_open()) {
+                std::cerr << "Error opening the file: " << input_file.c_str() << std::endl;
+                return -1;
+            }
+            int64_t compressed_chunk_size;
+            double total_read_time = 0, total_write_time = 0, total_decompress_time = 0;
+            std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
+            SZ3::Timer total_timer(true);
+            SZ3::Timer timer(false);
+            int num_iterations = dimension[2] / depth;
+            int leftover = dimension[2] % depth;
+            if(leftover > 0) {
+                num_iterations += 1;
+            }
+            for(int i=0;i<num_iterations;i++) {
+                if(i == num_iterations - 1 && leftover > 0) {
+                    std::vector<int> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
+                }
+                timer.start();
+                fin.read(reinterpret_cast<char*>(&compressed_chunk_size), sizeof(int64_t));
+                std::vector<char> buffer(compressed_chunk_size);
+                fin.read(buffer.data(), compressed_chunk_size);
+                total_read_time += timer.stop();
+                timer.start();
+                auto* decData = SZ_decompress<TYPE>(conf, buffer.data(), compressed_chunk_size);
+                double decompress_time = timer.stop();
+                total_decompress_time += decompress_time;
+                timer.start();
+                fout.write(reinterpret_cast<const char*>(decData), conf.num * sizeof(TYPE));
+                total_write_time += timer.stop();
+                std::cout << "Chunk " << i << " compression completed! Time elasped: " << decompress_time
+                          << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << std::endl;
+            }
+            size_t file_size = dimension[0] * dimension[1] * dimension[2] * sizeof(TYPE);
+            std::cout << "Congratulations! Deompression completed! Total file size decompressed: " << file_size / 1024 / 1024 << " MB;\n"
+                      << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
+            std::cout << "compression_time: " << total_decompress_time << ", read time: " << total_read_time
+                      << ", write time: " << total_write_time << std::endl;
+        } else {
+            conf.setDims(dimension.begin(), dimension.end());
+            conf.absErrorBound = eb;
+            size_t cmpSize;
+            auto cmpData = SZ3::readfile<char>(input_file.c_str(), cmpSize);
+
+            SZ3::Timer timer(true);
+            auto *decData = SZ_decompress<TYPE>(conf, cmpData.get(), cmpSize);
+            double decompress_time = timer.stop();
+            SZ3::writefile<TYPE>(output_file.c_str(), decData, conf.num);
+            printf("compression ratio = %f\n", conf.num * (double) sizeof(TYPE) * 1.0 / (double) cmpSize);
+            printf("decompression time = %f seconds.\n", decompress_time);
+            printf("decompressed file = %s\n", output_file.c_str());
+        }
+        return 0;
     }
 
     int decompress(int argc, char**argv) {
@@ -112,20 +277,15 @@ namespace sz3_split {
         std::vector<int> dimension;
         std::string input_file, output_file;
         float eb;
-        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb);
-        SZ3::Config conf = defaultConfig(); // 300 is the fastest dimension
-        conf.setDims(dimension.begin(), dimension.end());
-        conf.absErrorBound = eb;
-        size_t cmpSize;
-        auto cmpData = SZ3::readfile<char>(input_file.c_str(), cmpSize);
-
-        SZ3::Timer timer(true);
-        auto *decData = SZ_decompress<float>(conf, cmpData.get(), cmpSize);
-        double decompress_time = timer.stop();
-        SZ3::writefile<float>(output_file.c_str(), decData, conf.num);
-        printf("compression ratio = %f\n", conf.num * (double)sizeof(float) * 1.0 / (double)cmpSize);
-        printf("decompression time = %f seconds.\n", decompress_time);
-        printf("decompressed file = %s\n", output_file.c_str());
+        bool isfloat64;
+        std::string mode;
+        int depth;
+        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
+        if(isfloat64) {
+            return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
+        }else{
+            return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+        }
     }
 
     int test(int argc, char**argv) {
