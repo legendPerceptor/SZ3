@@ -159,8 +159,8 @@ namespace sz3_split {
                 fout.write(reinterpret_cast<const char*>(compressedData), compresed_chunk_size);
                 fout.flush();
                 total_write_time += temp.stop();
-//                std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
-//                          << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
+                std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
+                          << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
             }
             size_t file_size = dimension[0] * dimension[1] * dimension[2] * sizeof(TYPE);
             std::cout << "Congratulations! Compression completed! Total file size compressed: " << file_size / 1024 / 1024 << " MB;\n"
