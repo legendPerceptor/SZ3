@@ -12,7 +12,7 @@ namespace sz3_split {
 
     void
     parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_file, std::string &output_file,
-                         std::vector<int> &data_dimension, float& eb, bool& is_float64, std::string& mode, int& depth) {
+                         std::vector<size_t> &data_dimension, float& eb, bool& is_float64, std::string& mode, size_t& depth) {
         optind = 1;
         const char *opt_index = "ht:i:d:e:o:";
         const int FLOAT_64 = 1008;
@@ -106,14 +106,14 @@ namespace sz3_split {
         return conf;
     }
     template<typename TYPE>
-    int compress_impl(const std::string& input_file, const std::string& output_file, std::vector<int> dimension, TYPE eb, const std::string& mode, int depth) {
+    int compress_impl(const std::string& input_file, const std::string& output_file, std::vector<size_t> dimension, TYPE eb, const std::string& mode, size_t depth) {
         SZ3::Config conf = defaultConfig();
 
         if(dimension.size() == 3 && mode == "layer") {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<int> chunk_dimension = {dimension[0], dimension[1], depth};
+                std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], depth};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -132,14 +132,14 @@ namespace sz3_split {
             SZ3::Timer total_timer(true);
             SZ3::Timer temp(false);
             double total_read_time = 0, total_write_time = 0, total_compress_time = 0;
-            int num_iterations = dimension[2] / depth;
-            int leftover = dimension[2] % depth;
+            size_t num_iterations = dimension[2] / depth;
+            size_t leftover = dimension[2] % depth;
             if(leftover > 0) {
                 num_iterations += 1;
             }
             for(int i = 0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<int> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                 }
                 std::vector<TYPE> buffer(conf.num);
@@ -190,12 +190,12 @@ namespace sz3_split {
 
     int compress(int argc, char **argv) {
         int threads;
-        std::vector<int> dimension;
+        std::vector<size_t> dimension;
         std::string input_file, output_file;
         float eb;
         bool isfloat64;
         std::string mode;
-        int depth;
+        size_t depth;
         parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
         if(isfloat64){
             return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
@@ -205,13 +205,13 @@ namespace sz3_split {
     }
 
     template<typename TYPE>
-    int decompress_impl(const std::string& input_file, const std::string& output_file, std::vector<int> dimension, TYPE eb, const std::string& mode, int depth) {
+    int decompress_impl(const std::string& input_file, const std::string& output_file, std::vector<size_t> dimension, TYPE eb, const std::string& mode, size_t depth) {
         SZ3::Config conf = defaultConfig(); // 300 is the fastest dimension
         if (dimension.size() == 3 && mode == "layer") {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<int> chunk_dimension = {dimension[0], dimension[1], depth};
+                std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], depth};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -225,14 +225,14 @@ namespace sz3_split {
             std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
             SZ3::Timer total_timer(true);
             SZ3::Timer timer(false);
-            int num_iterations = dimension[2] / depth;
-            int leftover = dimension[2] % depth;
+            size_t num_iterations = dimension[2] / depth;
+            size_t leftover = dimension[2] % depth;
             if(leftover > 0) {
                 num_iterations += 1;
             }
             for(int i=0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<int> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                 }
                 timer.start();
@@ -269,7 +269,7 @@ namespace sz3_split {
             double decompress_time = timer.stop();
             SZ3::writefile<TYPE>(output_file.c_str(), decData, conf.num);
             delete[] decData;
-            printf("compression ratio = %f\n", conf.num * (double) sizeof(TYPE) * 1.0 / (double) cmpSize);
+            printf("compression ratio = %f\n", (double)conf.num * (double) sizeof(TYPE) * 1.0 / (double) cmpSize);
             printf("decompression time = %f seconds.\n", decompress_time);
             printf("decompressed file = %s\n", output_file.c_str());
         }
@@ -278,12 +278,12 @@ namespace sz3_split {
 
     int decompress(int argc, char**argv) {
         int threads;
-        std::vector<int> dimension;
+        std::vector<size_t> dimension;
         std::string input_file, output_file;
         float eb;
         bool isfloat64;
         std::string mode;
-        int depth;
+        size_t depth;
         parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
         if(isfloat64) {
             return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
