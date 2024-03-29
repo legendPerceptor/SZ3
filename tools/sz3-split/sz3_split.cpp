@@ -246,6 +246,7 @@ namespace sz3_split {
                 total_decompress_time += decompress_time;
                 timer.start();
                 fout.write(reinterpret_cast<const char*>(decData), conf.num * sizeof(TYPE));
+                delete[] decData;
                 total_write_time += timer.stop();
                 std::cout << "Chunk " << i << " compression completed! Time elasped: " << decompress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << std::endl;
@@ -267,6 +268,7 @@ namespace sz3_split {
             auto *decData = SZ_decompress<TYPE>(conf, cmpData.get(), cmpSize);
             double decompress_time = timer.stop();
             SZ3::writefile<TYPE>(output_file.c_str(), decData, conf.num);
+            delete[] decData;
             printf("compression ratio = %f\n", conf.num * (double) sizeof(TYPE) * 1.0 / (double) cmpSize);
             printf("decompression time = %f seconds.\n", decompress_time);
             printf("decompressed file = %s\n", output_file.c_str());
