@@ -123,7 +123,7 @@ namespace sz3_split {
                 return -1;
             }
 //            std::streampos read_start = 0;
-            int chunk_size = sizeof(TYPE) * conf.num;
+            size_t chunk_size = sizeof(TYPE) * conf.num;
             std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
             if(!fout.is_open()) {
                 std::cerr << "Error opening the file: " << output_file.c_str() << std::endl;
@@ -137,7 +137,7 @@ namespace sz3_split {
             if(leftover > 0) {
                 num_iterations += 1;
             }
-            for(int i = 0;i<num_iterations;i++) {
+            for(size_t i = 0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
                     std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
