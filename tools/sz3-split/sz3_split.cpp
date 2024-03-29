@@ -25,7 +25,7 @@ namespace sz3_split {
                 {"output", required_argument, nullptr, 'o'},
                 {"errorbound", required_argument, nullptr, 'e'},
                 {"dimension",  required_argument, nullptr, 'd'},
-                {"float64", required_argument, nullptr, FLOAT_64},
+                {"float64", no_argument, nullptr, FLOAT_64},
                 {"mode", required_argument, nullptr, MODE},
                 {"depth", required_argument, nullptr, DEPTH}
         };
