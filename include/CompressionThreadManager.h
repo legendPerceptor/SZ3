@@ -242,8 +242,10 @@ namespace sz3_split {
 
             // Join threads
             reader.join();
+            std::cout << "Reader has joined!" << std::endl;
             for (int i = 0; i < numWorkers; ++i) {
                 workers[i].join();
+                std::cout << "workers[" << i << "] has joined" << std::endl;
             }
             all_done = true;
             writer_can_write.notify_one();
