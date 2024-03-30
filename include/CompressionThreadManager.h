@@ -14,6 +14,8 @@
 #include <vector>
 #include "SZ3/api/sz.hpp"
 
+using namespace std::chrono_literals;
+
 namespace sz3_split {
 
     SZ3::Config defaultConfig() {
@@ -134,7 +136,14 @@ namespace sz3_split {
             while (true) {
                 // Wait for data to be available
                 std::unique_lock<std::mutex> readLock(readMutex);
-                worker_can_get.wait(readLock, [this]{return !readQueue.empty() || read_done;});
+                while(readQueue.empty()) {
+                    if(worker_can_get.wait_for(readLock, 100ms) == std::cv_status::timeout) {
+                        if(read_done){
+                            return;
+                        }
+                    }
+                }
+//                worker_can_get.wait(readLock, [this]{return !readQueue.empty() || read_done;});
 
                 // Check if reading is done and no more data is available
                 if(read_done && readQueue.empty())
