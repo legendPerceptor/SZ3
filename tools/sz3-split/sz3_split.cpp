@@ -178,6 +178,7 @@ namespace sz3_split {
             printf("compression ratio = %.2f \n", (double) conf.num * 1.0 * sizeof(TYPE) / (double) outSize);
             printf("compression time = %f\n", compress_time);
             printf("compressed data file = %s\n", output_file.c_str());
+            delete[] compressedData;
         }
         return 0;
     }
