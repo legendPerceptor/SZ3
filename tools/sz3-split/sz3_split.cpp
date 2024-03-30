@@ -31,6 +31,7 @@ namespace sz3_split {
                 {"depth", required_argument, nullptr, DEPTH}
         };
         depth = 1;
+        threads = 1;
         std::string compress_helper_info = "Usage: sz3_split (de)compress [options]\n"
                                            "options:  --threads/-t     INT   number of threads, default is 1\n"
                                            "          --input/-i       STR   the RAW file/compressed file\n"
@@ -184,7 +185,7 @@ namespace sz3_split {
     }
 
     int compress(int argc, char **argv) {
-        int threads;
+        int threads = 1;
         std::vector<size_t> dimension;
         std::string input_file, output_file;
         float eb;
