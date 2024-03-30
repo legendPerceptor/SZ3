@@ -246,6 +246,8 @@ namespace sz3_split {
                 workers[i].join();
             }
             all_done = true;
+            writer_can_write.notify_one();
+            std::cout << "Exit all threads and (de)compression finished" << std::endl;
             writer.join();
         }
     };
