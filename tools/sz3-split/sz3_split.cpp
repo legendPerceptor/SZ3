@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstdint>
 #include "SZ3/api/sz.hpp"
+#include "CompressionThreadManager.h"
 
 namespace sz3_split {
 
@@ -94,17 +95,7 @@ namespace sz3_split {
 
     }
 
-    SZ3::Config defaultConfig() {
-        SZ3::Config conf;
-        conf.cmprAlgo = SZ3::ALGO_LORENZO_REG;
-        conf.lorenzo = true; // only use 1st order lorenzo
-        conf.lorenzo2 = false;
-        conf.regression = false;
-        conf.regression2 = false;
-        conf.errorBoundMode = SZ3::EB_ABS; // refer to def.hpp for all supported error bound mode
-        conf.absErrorBound = 1E-3; // absolute error bound 1e-3
-        return conf;
-    }
+
     template<typename TYPE>
     int compress_impl(const std::string& input_file, const std::string& output_file, std::vector<size_t> dimension, TYPE eb, const std::string& mode, size_t depth) {
         SZ3::Config conf = defaultConfig();
@@ -141,8 +132,10 @@ namespace sz3_split {
                 if(i == num_iterations - 1 && leftover > 0) {
                     std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
+                    chunk_size = sizeof(TYPE) * conf.num;
                 }
                 std::vector<TYPE> buffer(conf.num);
+
 //                fin.seekg(read_start);
                 temp.start();
                 fin.read(reinterpret_cast<char *>(buffer.data()), chunk_size);
@@ -158,6 +151,7 @@ namespace sz3_split {
                 fout.write(reinterpret_cast<const char*>(&compresed_chunk_size), sizeof(int64_t));
                 fout.write(reinterpret_cast<const char*>(compressedData), compresed_chunk_size);
                 fout.flush();
+                delete[] compressedData;
                 total_write_time += temp.stop();
                 std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
@@ -197,11 +191,22 @@ namespace sz3_split {
         std::string mode;
         size_t depth;
         parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
-        if(isfloat64){
-            return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
-        }else{
-            return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+        if(threads <= 1 || dimension.size() < 3) {
+            if (isfloat64) {
+                return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
+            } else {
+                return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+            }
+        } else { // multi-threading for layer-by-layer compression
+            if (isfloat64) {
+                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, true);
+                manager.startThreads();
+            } else {
+                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, true);
+                manager.startThreads();
+            }
         }
+        return 0;
     }
 
     template<typename TYPE>
@@ -285,11 +290,22 @@ namespace sz3_split {
         std::string mode;
         size_t depth;
         parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
-        if(isfloat64) {
-            return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
-        }else{
-            return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+        if(threads <= 1 || dimension.size() < 3) {
+            if (isfloat64) {
+                return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
+            } else {
+                return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
+            }
+        } else {
+            if (isfloat64) {
+                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, false);
+                manager.startThreads();
+            } else {
+                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, false);
+                manager.startThreads();
+            }
         }
+        return 0;
     }
 
     int test(int argc, char**argv) {
