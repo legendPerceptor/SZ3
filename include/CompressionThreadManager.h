@@ -73,7 +73,7 @@ namespace sz3_split {
             std::ifstream fin(input_file.c_str(), std::ios::binary);
             if(!fin.is_open()) {
                 std::cerr << "Error opening the file: " << input_file.c_str() << std::endl;
-                return;
+                exit(EXIT_FAILURE);
             }
 
             double total_read_time = 0;
@@ -189,8 +189,8 @@ namespace sz3_split {
         void writeThread() {
             std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
             if(!fout.is_open()) {
-                std::cerr << "Error opening the file: " << output_file.c_str() << std::endl;
-                return;
+                std::cerr << "Error opening the file to write: " << output_file.c_str() << std::endl;
+                exit(EXIT_FAILURE);
             }
             while(true) {
                 std::unique_lock<std::mutex> writeLock(writeMutex);
