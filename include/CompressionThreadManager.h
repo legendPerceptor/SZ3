@@ -20,11 +20,6 @@ namespace sz3_split {
 
     SZ3::Config defaultConfig() {
         SZ3::Config conf;
-        conf.cmprAlgo = SZ3::ALGO_LORENZO_REG;
-        conf.lorenzo = true; // only use 1st order lorenzo
-        conf.lorenzo2 = false;
-        conf.regression = false;
-        conf.regression2 = false;
         conf.errorBoundMode = SZ3::EB_ABS; // refer to def.hpp for all supported error bound mode
         conf.absErrorBound = 1E-3; // absolute error bound 1e-3
         return conf;
@@ -57,17 +52,18 @@ namespace sz3_split {
         T eb;
         size_t depth;
         size_t num_of_threads;
+        size_t num_of_readers;
         size_t read_queue_max_size;
         size_t write_queue_max_size;
         bool is_compression_mode;
 
-        void readThread(){
+        void readThread(size_t threadId, size_t totalReadThreads){
             assert(dimension.size() == 3);
             SZ3::Config conf = defaultConfig();
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], depth};
+                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             size_t chunk_size = sizeof(T) * conf.num;
@@ -85,9 +81,10 @@ namespace sz3_split {
                 num_iterations += 1;
             }
             SZ3::Timer temp(false);
-            for(size_t i = 0;i<num_iterations;i++) {
+            size_t org_chunk_size = chunk_size;
+            for(size_t i = threadId;i<num_iterations;i+=totalReadThreads) {
                 if (i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                     chunk_size = sizeof(T) * conf.num;
                 }
@@ -99,6 +96,10 @@ namespace sz3_split {
 
                 if (is_compression_mode) {
                     chunk.dataBuffer = std::vector<T>(conf.num);
+                    // Calculate start position for this thread, the last chunk may have different chunk_size
+                    size_t start_position = i * org_chunk_size * totalReadThreads;
+                    // Set file pointer to the calculated start position
+                    fin.seekg(start_position, std::ios::beg);
                     temp.start();
                     fin.read(reinterpret_cast<char *>(chunk.dataBuffer.data()), chunk_size);
                     total_read_time += temp.stop();
@@ -229,9 +230,9 @@ namespace sz3_split {
 
     public:
         CompressionThreadManager(std::string input_file, std::string output_file, std::vector<size_t> dimension, T eb,
-                            size_t depth, size_t num_of_threads, bool is_compression)
+                            size_t depth, size_t num_of_threads, size_t num_of_readers, bool is_compression)
                 : input_file(std::move(input_file)), output_file(std::move(output_file)),
-                  dimension(std::move(dimension)), eb(eb), depth(depth), num_of_threads(num_of_threads){
+                  dimension(std::move(dimension)), eb(eb), depth(depth), num_of_threads(num_of_threads), num_of_readers(num_of_readers){
             read_queue_max_size = num_of_threads;
             write_queue_max_size = num_of_threads;
             read_done = false;
@@ -241,16 +242,24 @@ namespace sz3_split {
         }
 
         void startThreads() {
-            std::thread reader(&CompressionThreadManager::readThread, this);
-            std::thread writer(&CompressionThreadManager::writeThread, this);
+
+            const int numReaders = num_of_readers;
             const int numWorkers = num_of_threads;
+            std::thread writer(&CompressionThreadManager::writeThread, this);
             std::thread workers[numWorkers];
+            std::thread readers[numReaders];
+            for(int i = 0; i < num_of_readers; ++i) {
+                readers[i] = std::thread(&CompressionThreadManager::readThread, this, i, numReaders);
+            }
             for (int i = 0; i < numWorkers; ++i) {
                 workers[i] = std::thread(&CompressionThreadManager::workerThread, this);
             }
 
             // Join threads
-            reader.join();
+            for(int i=0;i<numReaders;++i) {
+                readers[i].join();
+                std::cout << "reader[" << i << "] has joined!" << std::endl;
+            }
             std::cout << "Reader has joined!" << std::endl;
             for (int i = 0; i < numWorkers; ++i) {
                 workers[i].join();

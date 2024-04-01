@@ -105,7 +105,7 @@ namespace sz3_split {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], depth};
+                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -131,7 +131,7 @@ namespace sz3_split {
             }
             for(size_t i = 0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                     chunk_size = sizeof(TYPE) * conf.num;
                 }
@@ -201,10 +201,10 @@ namespace sz3_split {
             }
         } else { // multi-threading for layer-by-layer compression
             if (isfloat64) {
-                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, true);
+                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, 1, true);
                 manager.startThreads();
             } else {
-                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, true);
+                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, 1, true);
                 manager.startThreads();
             }
         }
@@ -218,7 +218,7 @@ namespace sz3_split {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], depth};
+                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -239,7 +239,7 @@ namespace sz3_split {
             }
             for(int i=0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {dimension[0], dimension[1], leftover};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                 }
                 timer.start();
@@ -300,10 +300,10 @@ namespace sz3_split {
             }
         } else {
             if (isfloat64) {
-                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, false);
+                CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, 1, false);
                 manager.startThreads();
             } else {
-                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, false);
+                CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, 1, false);
                 manager.startThreads();
             }
         }
