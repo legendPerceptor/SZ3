@@ -68,7 +68,8 @@ namespace sz3_split {
                     workerProcess(rank);
                 }
             } else {
-                std::cout << "In compression mode" << std::endl;
+                std::cout << "In decompression mode" << std::endl;
+                std::cout << "dimension.size(): " << dimension.size() << std::endl;
                 if(rank == 0) {
                     readProcess(rank, 1);
                 } else if (rank >= 1 && rank < num_io_processes) {
@@ -98,9 +99,8 @@ namespace sz3_split {
             MPI_File fh;
             MPI_Offset file_size;
             int status;
-            std::cout << "read process with rank " << rank << " before file open!, input file:" << input_file << std::endl;
-            status = MPI_File_open(MPI_COMM_WORLD, input_file.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-            std::cout << "read process with rank " << rank << " after file open! status:" << status << std::endl;
+
+            status = MPI_File_open(MPI_COMM_SELF, input_file.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
             MPI_File_get_size(fh, &file_size);
 
             MPI_Offset dp_offset = 0;
@@ -186,9 +186,11 @@ namespace sz3_split {
                 memcpy(pointer, &layer_depth, sizeof(size_t));
                 pointer += sizeof(size_t);
 
-                memcpy(pointer, chunk.dataBuffer.data(), chunk.dataBuffer.size());
+                memcpy(pointer, chunk.dataBuffer.data(), chunk.dataBuffer.size() * sizeof(T));
+                std::cout << "read rank: " << read_rank << ", about to MPI_Send, buffer size:" << buffer.size() << std::endl;
                 // Send chunk to worker
                 MPI_Send(buffer.data(), buffer.size(), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
+                std::cout << "read rank: " << read_rank << ", finished MPI_Send, buffer size:" << buffer.size() << std::endl;
             } else {
                 std::vector<char> buffer(chunk.cpdataBuffer.size() + 3 * sizeof(size_t));
                 char *pointer = buffer.data();
@@ -201,7 +203,7 @@ namespace sz3_split {
                 pointer += sizeof(size_t);
                 memcpy(pointer, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size());
                 // Send chunk to worker
-                MPI_Send(buffer.data(), chunk.cpdataBuffer.size(), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
+                MPI_Send(buffer.data(), buffer.size(), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
             }
         }
 
@@ -210,7 +212,8 @@ namespace sz3_split {
             int dest;
             int tag = 1;
             if (is_compression_mode) {
-                dest = num_io_processes;
+                dest = map_worker_to_writer(rank);
+                std::cout << "worker with rank " << rank << " sending to " << dest  << "with size: " << chunk.cpdataBuffer.size() + 2 * sizeof(size_t) << std::endl;
                 std::vector<char> buffer(chunk.cpdataBuffer.size() + 2 * sizeof(size_t));
                 char* pointer = buffer.data();
                 size_t chunk_buffer_size = chunk.cpdataBuffer.size();
@@ -218,8 +221,10 @@ namespace sz3_split {
                 pointer += sizeof(size_t);
                 memcpy(pointer, &chunk.sequenceNumber, sizeof(size_t));
                 pointer += sizeof(size_t);
-                memcpy(pointer, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size());
+                memcpy(pointer, chunk.cpdataBuffer.data(), chunk_buffer_size);
+                std::cout << "worker with rank " << rank << " start MPI_SEND " << dest  << " with buffer size: " << buffer.size() << std::endl;
                 MPI_Send(buffer.data(), buffer.size(), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
+                std::cout << "worker with rank " << rank << " finished sending to " << dest  << " with buffer size: " << buffer.size() << std::endl;
             } else {
                 dest = map_worker_to_writer(rank);
                 std::vector<char> buffer(chunk.dataBuffer.size() * sizeof(T) + 2 * sizeof(size_t));
@@ -236,7 +241,13 @@ namespace sz3_split {
         }
 
         void signalReadCompleteToWorkers(size_t read_rank, size_t dest) {
-            MPI_Send(nullptr, 0, MPI_BYTE, dest, 0, MPI_COMM_WORLD);
+            size_t buffer_size = 0;
+            MPI_Send(&buffer_size, sizeof(size_t), MPI_BYTE, dest, 0, MPI_COMM_WORLD);
+        }
+
+        void signalWorkerCompleteToWriter(size_t worker_rank, size_t dest) {
+            size_t buffer_size = 0;
+            MPI_Send(&buffer_size, sizeof(size_t), MPI_BYTE, dest, 1, MPI_COMM_WORLD);
         }
 
         int map_worker_to_reader(size_t rank) {
@@ -250,7 +261,7 @@ namespace sz3_split {
 
         int map_worker_to_writer(size_t rank) {
             if(is_compression_mode) {
-                return num_io_processes;
+                return num_io_processes - 1;
             } else {
                 return 1 + (rank - num_io_processes) % (num_io_processes - 1);
             }
@@ -258,17 +269,19 @@ namespace sz3_split {
 
         void workerProcess(size_t rank) {
             double total_read_time;
-            size_t chunk_size = dimension[0] * dimension[1] * depth + sizeof(size_t) * 3;
+            size_t chunk_size = dimension[0] * dimension[1] * depth * sizeof(T) + sizeof(size_t) * 3;
             std::vector<char> buffer(chunk_size);
 
             while(true) {
-
+                std::cout << "worker with rank " << rank << ", src:" << map_worker_to_reader(rank) << ", chunk_size to receive: " << chunk_size << std::endl;
                 MPI_Recv(buffer.data(), chunk_size, MPI_BYTE, map_worker_to_reader(rank), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 char* pointer = buffer.data();
                 size_t buffer_size = *reinterpret_cast<size_t*>(pointer);
+                std::cout << "worker with rank " << rank << " recevied size: " << buffer_size << std::endl;
                 pointer += sizeof (size_t);
                 if (buffer_size == 0) {
                     printf("worker process %ld has completed!\n", rank);
+                    signalWorkerCompleteToWriter(rank, map_worker_to_writer(rank));
                     return;
                 }
                 size_t sequence_number = *reinterpret_cast<size_t*>(pointer);
@@ -279,7 +292,9 @@ namespace sz3_split {
                 chunk.sequenceNumber = sequence_number;
                 chunk.conf.absErrorBound = eb;
                 std::vector<size_t> dims = {layer_depth, dimension[0], dimension[1]};
+
                 chunk.conf.setDims(dims.begin(), dims.end());
+                std::cout << "decompression dims size: " << dims.size() << ", chunk.conf.N=" << (int)chunk.conf.N << ", sequence_number: " << sequence_number << ", layer_depth:" << layer_depth << std::endl;
 
                 if (is_compression_mode) {
                     chunk.dataBuffer = std::vector<T>(buffer_size);
@@ -287,16 +302,20 @@ namespace sz3_split {
                     size_t outSize = 0;
                     char *compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                     chunk.cpdataBuffer = std::vector<char>(outSize);
-                    std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
+                    std::cout << "work with rank " << rank << " has outSide: " << outSize << std::endl;
+//                    std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
+                    memcpy(chunk.cpdataBuffer.data(), compressedData, outSize);
                     delete[] compressedData;
                     std::cout << "worker with rank " << rank << " finished compressing chunk " << chunk.sequenceNumber << std::endl;
                     sendDataToWriter(chunk, rank);
                 } else {
                     chunk.cpdataBuffer = std::vector<char>(buffer_size);
                     memcpy(chunk.cpdataBuffer.data(), pointer, buffer_size);
-                    T *decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size());
+                    std::cout << "worker with rank " << rank << " start decompressing, with compressed data size: " << buffer_size  << ", conf.num=" << chunk.conf.num << ", conf.N=" << (int)chunk.conf.N << std::endl;
+                    T *decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), buffer_size);
                     chunk.dataBuffer = std::vector<T>(chunk.conf.num);
-                    std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+//                    std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                    memcpy(chunk.dataBuffer.data(), decData, chunk.conf.num * sizeof(T));
                     std::cout << "worker with rank " << rank << " finished decompressing chunk " << chunk.sequenceNumber << std::endl;
                     sendDataToWriter(chunk, rank);
                     delete[] decData;
@@ -310,9 +329,8 @@ namespace sz3_split {
             MPI_File fh;
             MPI_Status status;
 
-            // Open the file collectively
-            MPI_File_open(MPI_COMM_WORLD, output_file.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
-            size_t chunk_cp_size = dimension[0] * dimension[1] * depth + sizeof(size_t) * 3;
+            MPI_File_open(MPI_COMM_SELF, output_file.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+            size_t chunk_cp_size = dimension[0] * dimension[1] * depth * sizeof(T) + sizeof(size_t) * 3;
 
             std::vector<char> buffer(chunk_cp_size);
             DataChunk<T> chunk;
@@ -325,18 +343,20 @@ namespace sz3_split {
 
             if(is_compression_mode) {
                 while (true) {
-                    for (int src = num_io_processes + 1; src < total_ranks; src++) {
-                        if (worker_finished[src - (num_io_processes + 1)]) {
+                    for (int src = num_io_processes; src < total_ranks; src++) {
+                        if (worker_finished[src - num_io_processes]) {
                             continue;
                         }
-
+                        std::cout << "writer with rank " << rank << " receiving from " << src << " with maximum chunk size: " << chunk_cp_size << std::endl;
                         // Receive a chunk
-                        MPI_Recv(buffer.data(), src, MPI_BYTE, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        MPI_Recv(buffer.data(), chunk_cp_size, MPI_BYTE, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        std::cout << "writer with rank " << rank << " receiving from " << src << "finished MPI_Recv"<< std::endl;
                         char *pointer = buffer.data();
                         size_t buffer_size = *reinterpret_cast<size_t *>(pointer);
+                        std::cout << "writer with rank " << rank << " receiving from " << src << " read buffer size: " << buffer_size << std::endl;
                         pointer += sizeof(size_t);
                         if (buffer_size == 0) {
-                            worker_finished[src - (num_io_processes + 1)] = true;
+                            worker_finished[src - num_io_processes] = true;
                             end_counter++;
                         }
                         size_t sequence_number = *reinterpret_cast<size_t *>(pointer);
@@ -356,8 +376,7 @@ namespace sz3_split {
                         MPI_File_write_at_all(fh, offset, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size(),
                                               MPI_BYTE,
                                               &status);
-                        offset += sizeof(int64_t);
-
+                        offset += chunk.cpdataBuffer.size();
                     }
 
                     if (end_counter == num_workers) {
@@ -365,19 +384,19 @@ namespace sz3_split {
                     }
                 }
             } else {
-                int num_of_writers = num_io_processes - 1;
-                int total_worker_for_this_writer = (total_ranks - (num_io_processes + rank)) / num_of_writers + 1;
+                int num_of_writers = num_io_processes - 1; //
+                int total_worker_for_this_writer = (total_ranks - (num_io_processes + rank - 1)) / num_of_writers;
                 while(true) {
-                    for(int src = num_io_processes + rank; src < total_ranks; src += num_of_writers) {
-                        if (worker_finished[src - (num_io_processes + 1)]) {
+                    for(int src = num_io_processes + rank - 1; src < total_ranks; src += num_of_writers) {
+                        if (worker_finished[src - num_io_processes]) {
                             continue;
                         }
-                        MPI_Recv(buffer.data(), src, MPI_BYTE, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        MPI_Recv(buffer.data(), chunk_cp_size, MPI_BYTE, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                         char *pointer = buffer.data();
                         size_t buffer_size = *reinterpret_cast<size_t *>(pointer);
                         pointer += sizeof(size_t);
                         if (buffer_size == 0) {
-                            worker_finished[src - (num_io_processes + 1)] = true;
+                            worker_finished[src - num_io_processes] = true;
                             end_counter++;
                         }
                         size_t sequence_number = *reinterpret_cast<size_t *>(pointer);
