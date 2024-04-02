@@ -22,9 +22,16 @@ find_package(PkgConfig)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/SZ3/version.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/include/SZ3/version.hpp)
 
-add_library(${PROJECT_NAME} INTERFACE)
+find_package(MPI REQUIRED)
+
+message("MPI INCLUDE PATH:" ${MPI_INCLUDE_PATH})
+
+add_library(${PROJECT_NAME} INTERFACE
+        include/CompressionMPIManager.h
+        include/split_common.h)
 target_include_directories(
         ${PROJECT_NAME} INTERFACE
+        ${MPI_INCLUDE_PATH}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

@@ -8,17 +8,19 @@
 #include <cstdint>
 #include "SZ3/api/sz.hpp"
 #include "CompressionThreadManager.h"
+#include "CompressionMPIManager.h"
 
 namespace sz3_split {
 
     void
     parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_file, std::string &output_file,
-                         std::vector<size_t> &data_dimension, float& eb, bool& is_float64, std::string& mode, size_t& depth) {
+                         std::vector<size_t> &data_dimension, float& eb, bool& is_float64, std::string& mode, size_t& depth, bool& use_mpi) {
         optind = 1;
         const char *opt_index = "ht:i:d:e:o:";
         const int FLOAT_64 = 1008;
         const int MODE = 1009;
         const int DEPTH = 1010;
+        const int MPI_MODE = 1011;
         struct option opts[] = {
                 {"threads",    required_argument, nullptr, 't'},
                 {"help",       no_argument,       nullptr, 'h'},
@@ -28,12 +30,15 @@ namespace sz3_split {
                 {"dimension",  required_argument, nullptr, 'd'},
                 {"float64", no_argument, nullptr, FLOAT_64},
                 {"mode", required_argument, nullptr, MODE},
-                {"depth", required_argument, nullptr, DEPTH}
+                {"depth", required_argument, nullptr, DEPTH},
+                {"mpi", no_argument, nullptr, MPI_MODE}
         };
         depth = 1;
         threads = 1;
+        use_mpi = false;
+        is_float64 = false;
         std::string compress_helper_info = "Usage: sz3_split (de)compress [options]\n"
-                                           "options:  --threads/-t     INT   number of threads, default is 1\n"
+                                           "options:  --threads/-t     INT   number of threads, default is 1, for MPI mode, this specifies the number of I/O processes\n"
                                            "          --input/-i       STR   the RAW file/compressed file\n"
                                            "          --output/-o      STR   the compressed file/decompressed file location\n"
                                            "          --help/-h              print this help information\n"
@@ -41,7 +46,8 @@ namespace sz3_split {
                                            "          --errorbound/-e  FLOAT the error bound to use in compression\n"
                                            "          --float64              the default is float32 for each datapoint, this param changes it to float64\n"
                                            "          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' for direct compression\n"
-                                           "          --depth          INT   select the layer depth in layer-by-layer compression\n";
+                                           "          --depth          INT   select the layer depth in layer-by-layer compression\n"
+                                           "          --mpi                  use MPI to run multiple processes";
         is_float64 = false; // default is float32
         int c;
         while ((c = getopt_long(argc, argv, opt_index, opts, nullptr)) != -1) {
@@ -76,6 +82,9 @@ namespace sz3_split {
                     break;
                 case DEPTH:
                     depth = std::stoi(optarg);
+                    break;
+                case MPI_MODE:
+                    use_mpi = true;
                     break;
                 default:
                     std::cerr << "Usage: compress/decompress/test\n";
@@ -189,23 +198,33 @@ namespace sz3_split {
         std::vector<size_t> dimension;
         std::string input_file, output_file;
         float eb;
-        bool isfloat64;
+        bool isfloat64 = false;
+        bool use_mpi = false;
         std::string mode;
         size_t depth;
-        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
+        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth, use_mpi);
         if(threads <= 1 || dimension.size() < 3) {
             if (isfloat64) {
                 return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
             } else {
                 return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
             }
-        } else { // multi-threading for layer-by-layer compression
+        } else if(!use_mpi) { // multi-threading for layer-by-layer compression
             if (isfloat64) {
                 CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, 1, true);
                 manager.startThreads();
             } else {
                 CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, 1, true);
                 manager.startThreads();
+            }
+        } else { // use mpi to compress
+            std::cout << "start using MPI to compress data" << std::endl;
+            if (isfloat64) {
+                CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth, true, threads);
+                manager.startMPI();
+            } else {
+                CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth, true, threads);
+                manager.startMPI();
             }
         }
         return 0;
@@ -284,27 +303,37 @@ namespace sz3_split {
     }
 
     int decompress(int argc, char**argv) {
-        int threads;
+        int threads = 1;
         std::vector<size_t> dimension;
         std::string input_file, output_file;
         float eb;
-        bool isfloat64;
+        bool isfloat64 = false;
+        bool use_mpi = false;
         std::string mode;
         size_t depth;
-        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth);
+        parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64, mode, depth, use_mpi);
         if(threads <= 1 || dimension.size() < 3) {
             if (isfloat64) {
                 return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth);
             } else {
                 return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth);
             }
-        } else {
+        } else if(!use_mpi){
             if (isfloat64) {
                 CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth, threads, 1, false);
                 manager.startThreads();
             } else {
                 CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth, threads, 1, false);
                 manager.startThreads();
+            }
+        } else { // use MPI
+            std::cout << "start using MPI to decompress data" << std::endl;
+            if (isfloat64) {
+                CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth, false, threads);
+                manager.startMPI();
+            } else {
+                CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth, false, threads);
+                manager.startMPI();
             }
         }
         return 0;
@@ -319,6 +348,7 @@ namespace sz3_split {
 int main(int argc, char** argv) {
     std::string general_helper_info = "Usage: sz3_split compress/decompress/test [options]\n"
                                       "use --help or -h to get the usage for each command\n";
+    std::cout << "sz3_split program started!" << std::endl;
     if(argc <= 1) {
         std::cout << general_helper_info << std::endl;
         return 0;
