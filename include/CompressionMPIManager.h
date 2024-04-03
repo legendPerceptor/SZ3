@@ -54,6 +54,10 @@ namespace sz3_split {
                 MPI_Abort(MPI_COMM_WORLD, 1);
             }
 
+            char processor_name[MPI_MAX_PROCESSOR_NAME];
+            int name_len;
+            MPI_Get_processor_name(processor_name, &name_len);
+            printf("Process %d of %d on node %s\n", rank, size, processor_name);
 
             if (is_compression_mode) {
                 if (rank >= 0 && rank < num_io_processes - 1) {
