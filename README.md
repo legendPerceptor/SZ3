@@ -1,129 +1,102 @@
-SZ3: A Modular Error-bounded Lossy Compression Framework for Scientific Datasets
+SZ3 layer-by-layer compression: A NUMA-adapted compression method
 =====
-(C) 2016 by Mathematics and Computer Science (MCS), Argonne National Laboratory. See COPYRIGHT in top-level directory.
 
-* Major Authors: Sheng Di, Kai Zhao, Xin Liang
-* Supervisor: Franck Cappello
-* Other Contributors: Robert Underwood, Sihuan Li, Ali M. Gok
+This branch serves as an add-on to the original SZ3 compression method.
+The traditional compression methods require loading the whole dataset into memory,
+resulting in out-of-memory (OOM) failures. Also, there was no way to compress a single tensor in parallel.
+We develop a layer-by-layer compression technique that allows users to compress very large 3D tensors with
+limited amount of memory. It can also scale up to multiple nodes with non-uniform memory access (NUMA)
+to compress huge files in short amount of time.
 
-## Citations
+The executable file lies in `tools/sz3-split/sz3_split` after built with CMake. Below is the help information.
+Users can get the help information with `sz3_split compress --help`. We will demonstrate some example usage later.
 
-**Kindly note**: If you mention SZ in your paper, the most appropriate citation is including these three references (**TBD22, ICDE21, Bigdata18**), because they cover the design and implementation of the latest version of SZ.
+```c++
+"Usage: sz3_split (de)compress [options]\n"
+"options:  --threads/-t     INT   number of threads, default is 1, for MPI mode, this specifies the number of I/O processes\n"
+"          --input/-i       STR   the RAW file/compressed file\n"
+"          --output/-o      STR   the compressed file/decompressed file location\n"
+"          --help/-h              print this help information\n"
+"          --dimension/-d   STR   the data dimension of the file, e.g., 256 256 512\n"
+"          --errorbound/-e  FLOAT the error bound to use in compression\n"
+"          --float64              the default is float32 for each datapoint, this param changes it to float64\n"
+"          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' for direct compression\n"
+"          --depth          INT   select the layer depth in layer-by-layer compression\n"
+"          --mpi                  use MPI to run multiple processes";
+```
 
-* SZ3 Framework: Xin Liang, Kai Zhao, Sheng Di, Sihuan Li, Robert Underwood, Ali M Gok, Jiannan Tian, Junjing Deng, Jon C Calhoun, Dingwen Tao, Zizhong Chen, and Franck Cappello.
-  "[SZ3: A modular framework for composing prediction-based error-bounded lossy compressors](https://ieeexplore.ieee.org/abstract/document/9866018)",
-  IEEE Transactions on Big Data (TBD 22).
+For example, we can compress the NYX dataset layer-by-layer although the dimension is only (512, 512, 512). The following command
+compresses the file with layers of depth 32 and there is one read process and one write process.
 
-* SZ3 Algorithm: Kai Zhao, Sheng Di, Maxim Dmitriev, Thierry-Laurent D. Tonellot, Zizhong Chen, and Franck
-  Cappello. "[Optimizing Error-Bounded Lossy Compression for Scientiﬁc Data by Dynamic Spline Interpolation](https://ieeexplore.ieee.org/document/9458791)"
-  , Proceeding of the 37th IEEE International Conference on Data Engineering (ICDE 21), Chania, Crete, Greece, Apr 19 -
-  22, 2021.
+The NYX dataset can be downloaded on [this website](https://sdrbench.github.io/)
 
-* SZauto: Kai Zhao, Sheng Di, Xin Liang, Sihuan Li, Dingwen Tao, Zizhong Chen, and Franck
-  Cappello. "[Significantly Improving Lossy Compression for HPC Datasets with Second-Order Prediction and Parameter Optimization](https://dl.acm.org/doi/10.1145/3369583.3392688)"
-  , Proceedings of the 29th International Symposium on High-Performance Parallel and Distributed Computing (HPDC 20),
-  Stockholm, Sweden, 2020. (code: https://github.com/szcompressor/SZauto/)
+```bash
+mpirun -n 4 sz3_split compress -i ./temperature.f32 -o ./temperature.f32.szsplit -d 512 512 512 \
+-e 0.01 --mode layer --depth 32 --mpi --threads 2
+```
 
-* SZ 2.0+: Xin Liang, Sheng Di, Dingwen Tao, Zizhong Chen, Franck
-  Cappello, "[Error-Controlled Lossy Compression Optimized for High Compression Ratios of Scientific Datasets](https://ieeexplore.ieee.org/document/8622520)"
-  , in IEEE International Conference on Big Data (Bigdata 2018), Seattle, WA, USA, 2018.
+The decompression doesn't have to use the same number of processes but the depth and error bounds need to be set the same.
+For example, the command below uses 8 processes and there are 4 I/O processes and 4 compute processes. 
 
-* SZ 1.4.0-1.4.13: Dingwen Tao, Sheng Di, Franck
-  Cappello. "[Significantly Improving Lossy Compression for Scientific Data Sets Based on Multidimensional Prediction and Error-Controlled Quantization](https://ieeexplore.ieee.org/document/7967203)"
-  , in IEEE International Parallel and Distributed Processing Symposium (IPDPS 2017), Orlando, Florida, USA, 2017.
+```bash
+mpirun -n 8 sz3_split decompress -i ./temperature.f32.szsplit -o ./temperature.f32.szsplit.dp
+-d 512 512 512 -e 0.01 --mode layer --depth 32 --mpi --threads 4
+```
 
-* SZ 0.1-1.0: Sheng Di, Franck
-  Cappello. "[Fast Error-bounded Lossy HPC Data Compression with SZ](https://ieeexplore.ieee.org/document/7516069)", in
-  IEEE International Parallel and Distributed Processing Symposium (IPDPS 2016), Chicago, IL, USA, 2016.
+If the files are stored in a parallel file system, the performance can usually get better with more I/O processes. We recommend
+setting the ratio of I/O processes to compute processes at around 1:8.
 
-* Point-wise relative error bound mode (i.e., PW_REL): Xin Liang, Sheng Di, Dingwen Tao, Zizhong Chen, Franck
-  Cappello, "[An Efficient Transformation Scheme for Lossy Data Compression with Point-wise Relative Error Bound](https://ieeexplore.ieee.org/document/8514879)"
-  , in IEEE International Conference on Clustering Computing (CLUSTER 2018), Belfast, UK, 2018. (Best Paper)
+Our program can also use multi-threading mode by not setting the `--mpi` parameter. In this mode,
+there is always one read thread and one write thread, the `--threads` parameter specifies the number of compute threads.
+One special case is `--threads 1`, where read, compute, and write all happen in the main thread and there is no multi-threading.
 
-## 3rd party libraries/tools
+For example, we can use 6 compute threads to do layer-by-layer compression in a single node, and then decompress the file with 4 threads.
 
-* Zstandard (https://facebook.github.io/zstd/). Zstandard v1.4.5 is included and will be used if libzstd can not be found by
-  pkg-config.
+```bash
+sz3_split compress -i ./temperature.f32 -o ./temperature.f32.szsplit -d 512 512 512 \
+-e 0.01 --mode layer --depth 32 --threads 6
+sz3_split decompress -i ./temperature.f32.szsplit -o ./temperature.f32.szsplit.dp -d 512 512 512 \
+-e 0.01 --mode layer --depth 32 --threads 4
+```
 
-## Installation
+Note that no matter how many threads/processes we use, the compressed file will be the same, and decompression
+can always be done by any number of threads/processes, as long as the depth and error bound stay the same.
 
-* mkdir build && cd build
-* cmake -DCMAKE_INSTALL_PREFIX:PATH=[INSTALL_DIR] ..
-* make
-* make install
+To utilize multiple nodes to compress a very large file, we usually need to submit a batch job to a supercomputer.
+We provide an example to use 8 nodes to compress a 960GB file below. The dimension of the tensor is 10240x7680x1536. The script
+is tested on Purdue Anvil machine, but should work on any machines with Slurm systems. Remember to change the file paths, partition, and account information before submitting the job.
 
-Then, you'll find all the executables in [INSTALL_DIR]/bin and header files in [INSTALL_DIR]/include
+Users can download the huge file on [this website](https://klacansky.com/open-scivis-datasets/category-simulation.html)
 
-## Testing Examples
-
-You can use the executable 'sz3' command to do the compression/decompression.
-
-SZ3 simplifies command line arguments in the previous version. If you are a new user, please follow the instructions
-given by the executable.
-
-
-## Backward Compatibility with SZ2
-For backward compatibility, most of the SZ2 command line parameters are supported in SZ3. **Exceptions are listed below**.
-Scripts without parameters below should work fine by replacing SZ2 with SZ3.
-
-| Parameter | Explanation                     | SZ3 roadmap                              |
-|-----------|---------------------------------|------------------------------------------|
-| -c        | Config file                     | SZ3 has different config format with SZ2 |
-| -p        | Print configuration info        | Will be supported soon                   |
-| -T        | Tucker Tensor Decomposition     | Will be supported later                  |
-| -P        | Point-wise relative error bound | Will be supported later                  |
-
-
-## API
-
-#### SZ3 C++ API
-* Located in 'include/SZ3/api/sz.hpp'. 
-* Requiring a modern C++ compiler.  
-* Different with SZ2 API.
-
-#### SZ3 C API
-* Located in 'tools/sz3c/include/sz3c.h'
-* Compatible with SZ2 API
-
-#### Python API
-* Located in 'tools/pysz/pysz.py'
-* Test file provided ('tools/pysz/test.py')
-* Compatible with both SZ3 and SZ2
-* Requiring SZ2/3 dynamic library
-
-## H5Z-SZ3
-
-Use examples/print_h5repack_args.c to construct the cd_values parameters based on the specified error configuration. 
-
-* Example: 
-
-Compression: 
-
-[sdi@localhost build]$ h5repack -f UD=32024,0,5,0,981668463,0,0,0 -i ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.h5 -o ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.sz3.h5
-
-Decompression:
-
-[sdi@localhost build]$ h5repack -f NONE -i ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.sz3.h5 -o ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.sz3.out.h5
+```bash
+#!/bin/bash
+#SBATCH --job-name=mpisz3
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=32
+#SBATCH --time=00:10:00
+#SBATCH -A cis220161
+#SBATCH -p wholenode
+#SBATCH -o ./large-8node-32each-1.o      # Name of stdout output file
+#SBATCH -e ./large-8node-32each-1.e      # Name of stderr error file
 
 
-Alternatively, the error bound information can also be given through sz3.config (when there are no cd_values for h5repack)
+# Load MPI module
+module load openmpi
 
-* Example (You need to put sz3.config in the current local directory so that it will read sz3.config to get error bounds):
+executable="/home/x-yliu4/sz3-yuanjian/official_sz3/SZ3-Split/build/tools/sz3-split/sz3_split"
+datafilename="dns_10240x7680x1536_float64.raw"
+datafullpath="/anvil/projects/x-cis220161/datasets/large-single-file-data/RAW-Files/$datafilename"
+compressedfile="/anvil/scratch/x-yliu4/multinode/$datafilename.sz3split"
+decompressedfile="/anvil/scratch/x-yliu4/multinode/$datafilename.sz3split.dp"
+# Run MPI program
 
-[sdi@localhost build]$ h5repack -f UD=32024,0 -i ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.h5 -o ~/Data/CESM-ATM-tylor/1800x3600/CLDLOW_1_1800_3600.dat.sz3.h5
-
-## Version history
-
-Version New features
-
-* SZ 3.0.0 SZ3 is the C++ version of SZ with modular and composable design.
-* SZ 3.0.1 Improve the build process.
-* SZ 3.1.0 The default algorithm is now interpolation+Lorenzo.
-* SZ 3.1.1 Add OpenMP support. Works for all algorithms. Please enable it using the config file. 
-* SZ 3.1.2 Support configuration file (INI format). Example can be found in 'tools/sz3/sz3.config'.
-* SZ 3.1.3 Support more error control mode: PSNR, L2Norm, ABS_AND_REL, ABS_OR_REL. Support INT32 and INT64 datatype.
-* SZ 3.1.4 Support running on Windows. Please refer to https://github.com/szcompressor/SZ3/issues/5#issuecomment-1094039224 for instructions.
-* SZ 3.1.5 Support HDF5 by H5Z-SZ3. Please add "-DBUILD_H5Z_FILTER=ON" to enable this function for CMake.
-* SZ 3.1.6 Support C API and Python API.
-* SZ 3.1.7 Initial MDZ(https://github.com/szcompressor/SZ3/tree/master/tools/mdz) support.
-* SZ 3.1.8 namespace changed from SZ to SZ3. H5Z-SZ3 supports configuration file now.
+echo "!!!compress test started!!!"
+date
+mpiexec -n 256 $executable compress -i $datafilename -o $compressedfile -d 10240 7680 1536 -e 0.01 --mode layer --depth 4 --threads 32 --mpi
+date
+echo "!!!decompress test started!!!"
+date
+mpiexec -n 256 $executable decompress -i $compressedfile -o $decompressedfile -d 10240 7680 1536 -e 0.01 --mode layer --depth 4 --threads 32 --mpi
+echo "!!!decompress test finished!!"
+date
+```
