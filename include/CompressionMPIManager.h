@@ -409,7 +409,7 @@ namespace sz3_split {
                         chunk.sequenceNumber = sequence_number;
                         chunk.dataBuffer = std::vector<T>(buffer_size);
                         memcpy(chunk.dataBuffer.data(), pointer, buffer_size);
-                        offset = sequence_number * dimension[0] * dimension[1] * depth;
+                        offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
                         std::cout << "[decompress]writer with rank " << rank << " writing chunk " << chunk.sequenceNumber << std::endl;
                         writer_timer.start();
                         MPI_File_write_at_all(fh, offset, chunk.dataBuffer.data(), chunk.dataBuffer.size() * sizeof(T),
