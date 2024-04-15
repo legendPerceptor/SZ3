@@ -230,7 +230,7 @@ namespace sz3_split {
             } else {
                 std::vector<char> buffer(chunk.dataBuffer.size() * sizeof(T) + 2 * sizeof(size_t));
                 char* pointer = buffer.data();
-                size_t chunk_buffer_size = chunk.cpdataBuffer.size();
+                size_t chunk_buffer_size = chunk.dataBuffer.size();
                 memcpy(pointer, &chunk_buffer_size, sizeof(size_t));
                 pointer += sizeof(size_t);
                 memcpy(pointer, &chunk.sequenceNumber, sizeof(size_t));
