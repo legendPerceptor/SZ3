@@ -5,6 +5,7 @@
 #ifndef SZ3_SPLIT_COMMON_H
 #define SZ3_SPLIT_COMMON_H
 #include "SZ3/api/sz.hpp"
+#include <getopt.h>
 
 namespace sz3_split {
     SZ3::Config defaultConfig() {

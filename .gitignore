@@ -7,3 +7,8 @@ cmake-build-debug
 cmake-build-release
 .idea
 install
+*.so
+*.egg-info/
+*.egg
+__pycache__/
+.vscode/
