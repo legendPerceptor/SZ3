@@ -5,8 +5,22 @@
 #include "CompressionThreadManager.h"
 
 namespace sz3_split {
-void
-    parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_file, std::string &output_file,
+
+void safe_call_MPI_finalize() {
+    int is_mpi_initialized = 0;
+    MPI_Initialized(&is_mpi_initialized);
+    if(!is_mpi_initialized) {
+        return;
+    }
+
+    int is_mpi_finalized = 0;
+    MPI_Finalized(&is_mpi_finalized);
+    if (!is_mpi_finalized) {
+        MPI_Finalize();
+    }
+}
+
+void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_file, std::string &output_file,
                          std::vector<size_t> &data_dimension, float& eb, bool& is_float64, std::string& mode, size_t& depth, bool& use_mpi) {
         optind = 1;
         const char *opt_index = "ht:i:d:e:o:";

@@ -12,3 +12,4 @@ install
 *.egg
 __pycache__/
 .vscode/
+python-examples/*.png

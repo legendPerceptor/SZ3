@@ -38,7 +38,11 @@ namespace sz3_split {
         }
 
         void startMPI() {
-            MPI_Init(NULL, NULL);
+            int is_mpi_initialized = 0;
+            MPI_Initialized(&is_mpi_initialized);
+            if(!is_mpi_initialized){
+                MPI_Init(NULL, NULL);
+            }
             int rank, size;
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
             MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -82,7 +86,6 @@ namespace sz3_split {
             end_time = MPI_Wtime();
             double elapsed_time = end_time - start_time;
             std::cout << "[stats] rank<" << rank << "> total run time: " << elapsed_time << "seconds" << std::endl;
-            MPI_Finalize();
         }
 
     private:
