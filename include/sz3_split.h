@@ -170,15 +170,15 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
                 fout.flush();
                 delete[] compressedData;
                 total_write_time += temp.stop();
-                std::cout << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
+                debugStream << "Chunk " << i << " compression completed! compressed_chunk_size: " << compresed_chunk_size << "; Time elasped: " << compress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << "fout.tellp(): " << fout.tellp() <<std::endl;
             }
             size_t file_size = (size_t)dimension[0] * (size_t)dimension[1] * (size_t)dimension[2] * sizeof(TYPE);
-            std::cout << "Congratulations! Compression completed! Total file size compressed: " << file_size / 1024 / 1024 << " MB;\n"
+            debugStream<< "Congratulations! Compression completed! Total file size compressed: " << file_size / 1024 / 1024 << " MB;\n"
                       << "Total compressed file size generated: " << fout.tellp() / 1024 /1024 << "MB;" << std::endl
                       << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
             double cr = (double)file_size / (double)fout.tellp();
-            std::cout << "compression ratio:" << std::fixed << std::setprecision(2) << cr <<", compression_time: " << total_compress_time << ", read time: " << total_read_time
+            debugStream << "compression ratio:" << std::fixed << std::setprecision(2) << cr <<", compression_time: " << total_compress_time << ", read time: " << total_read_time
                       << ", write time: " << total_write_time << std::endl;
         } else {
             // 300 is the fastest dimension
@@ -190,11 +190,11 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             SZ3::Timer timer(true);
             char *compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
             double compress_time = timer.stop();
-            std::cout << "Compression completed! Time elasped: " << compress_time << std::endl;
+            debugStream << "Compression completed! Time elasped: " << compress_time << std::endl;
             SZ3::writefile(output_file.c_str(), compressedData, outSize);
-            printf("compression ratio = %.2f \n", (double) conf.num * 1.0 * sizeof(TYPE) / (double) outSize);
-            printf("compression time = %f\n", compress_time);
-            printf("compressed data file = %s\n", output_file.c_str());
+            debugStream << "compression ratio = " << std::fixed << std::setprecision(2) << (double) conf.num * 1.0 * sizeof(TYPE) / (double) outSize << std::endl;
+            debugStream << "compression time = " << compress_time << std::endl;
+            debugStream << "compressed data file = " << output_file.c_str() << std::endl;
             delete[] compressedData;
         }
         return 0;
@@ -225,7 +225,7 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
                 manager.startThreads();
             }
         } else { // use mpi to compress
-            std::cout << "start using MPI to compress data" << std::endl;
+            debugStream << "start using MPI to compress data" << std::endl;
             if (isfloat64) {
                 CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth, true, threads);
                 manager.startMPI();
@@ -281,15 +281,15 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
                 fout.write(reinterpret_cast<const char*>(decData), conf.num * sizeof(TYPE));
                 delete[] decData;
                 total_write_time += timer.stop();
-                std::cout << "Chunk " << i << " compression completed! Time elasped: " << decompress_time
+                debugStream<< "Chunk " << i << " compression completed! Time elasped: " << decompress_time
                           << " seconds, total time elapsed: " << total_timer.stop() << " seconds." << std::endl;
             }
             size_t file_size = (size_t)dimension[0] * (size_t)dimension[1] * (size_t)dimension[2] * sizeof(TYPE);
             size_t compressed_size = fin.tellg();
-            std::cout << "Congratulations! Deompression completed! Total file size decompressed: " << file_size / 1024 / 1024 << " MB;\n"
+            debugStream << "Congratulations! Deompression completed! Total file size decompressed: " << file_size / 1024 / 1024 << " MB;\n"
                       << "total time elapsed: " << total_timer.stop() << "seconds" << std::endl;
             double cr = (double)file_size / (double) compressed_size;
-            std::cout << "compression ratio:" << std::fixed << std::setprecision(2) << cr << ", compression_time: " << total_decompress_time << ", read time: " << total_read_time
+            debugStream << "compression ratio:" << std::fixed << std::setprecision(2) << cr << ", compression_time: " << total_decompress_time << ", read time: " << total_read_time
                       << ", write time: " << total_write_time << std::endl;
         } else {
             conf.setDims(dimension.begin(), dimension.end());

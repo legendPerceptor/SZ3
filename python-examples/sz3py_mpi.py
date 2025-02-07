@@ -38,7 +38,7 @@ def parse_arguments():
     """ Parse command-line arguments """
     parser = argparse.ArgumentParser(description="Run SZ3 Compression and Decompression with optional MPI support.")
     parser.add_argument("--use-mpi", action="store_true", help="Enable MPI for parallel execution.")
-    parser.add_argument("--threads", type=int, default=4, help="Number of threads of processes depending on whether MPI is used.")
+    parser.add_argument("--threads", type=int, default=2, help="Number of threads of processes depending on whether MPI is used.")
     return parser.parse_args()
 
 def get_mpi_rank():
