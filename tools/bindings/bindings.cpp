@@ -8,6 +8,10 @@ namespace py = pybind11;
 PYBIND11_MODULE(sz3py, m) {
     m.doc() = "Python bindings for the SZ3 compression library";
 
+    m.def("safeMPIFinalize", [](){
+        sz3_split::safe_call_MPI_finalize();
+    }, "end the MPI program");
+
     m.def("compress", [](std::vector<std::string> args) {
         std::vector<char*> argv(args.size());
         for (size_t i = 0; i < args.size(); i++) {

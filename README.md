@@ -1,5 +1,4 @@
-SZ3 layer-by-layer compression: A NUMA-adapted compression method
-=====
+# SZ3 layer-by-layer compression: A NUMA-adapted compression method
 
 This branch serves as an add-on to the original SZ3 compression method.
 The traditional compression methods require loading the whole dataset into memory,
@@ -31,16 +30,14 @@ compresses the file with layers of depth 32 and there is one read process and on
 The NYX dataset can be downloaded on [this website](https://sdrbench.github.io/)
 
 ```bash
-mpirun -n 4 sz3_split compress -i ./temperature.f32 -o ./temperature.f32.szsplit -d 512 512 512 \
--e 0.01 --mode layer --depth 32 --mpi --threads 2
+mpirun -n 4 sz3_split compress -i ./temperature.f32 -o ./temperature.f32.szsplit -d 512 512 512 -e 0.01 --mode layer --depth 32 --mpi --threads 2
 ```
 
 The decompression doesn't have to use the same number of processes but the depth and error bounds need to be set the same.
-For example, the command below uses 8 processes and there are 4 I/O processes and 4 compute processes. 
+For example, the command below uses 8 processes and there are 4 I/O processes and 4 compute processes.
 
 ```bash
-mpirun -n 8 sz3_split decompress -i ./temperature.f32.szsplit -o ./temperature.f32.szsplit.dp
--d 512 512 512 -e 0.01 --mode layer --depth 32 --mpi --threads 4
+mpirun -n 8 sz3_split decompress -i ./temperature.f32.szsplit -o ./temperature.f32.szsplit.dp -d 512 512 512 -e 0.01 --mode layer --depth 32 --mpi --threads 4
 ```
 
 If the files are stored in a parallel file system, the performance can usually get better with more I/O processes. We recommend

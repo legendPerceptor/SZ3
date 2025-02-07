@@ -28,5 +28,6 @@ int main(int argc, char** argv) {
     }else{
         std::cout << general_helper_info << std::endl;
     }
+    sz3_split::safe_call_MPI_finalize();
     return 0;
 }
