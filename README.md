@@ -97,3 +97,5 @@ mpiexec -n 256 $executable decompress -i $compressedfile -o $decompressedfile -d
 echo "!!!decompress test finished!!"
 date
 ```
+
+We also created Python binding for the program for ease of use in the Python language. Users can expect very similar usage of the above programs in Python. More detailed description can be found in [tools/bindings/README.md](tools/bindings/README.md).
