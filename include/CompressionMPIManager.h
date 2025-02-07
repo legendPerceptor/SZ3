@@ -15,6 +15,7 @@
 #include <mpi.h>
 #include "SZ3/api/sz.hpp"
 #include "split_common.h"
+#include "DebugStream.hpp"
 
 namespace sz3_split {
 
@@ -65,13 +66,13 @@ namespace sz3_split {
 
             if (is_compression_mode) {
                 if (rank >= 0 && rank < num_io_processes - 1) {
-                    std::cout << "read rank: " << rank << ", size:" << size << std::endl;
+                    debugStream << "read rank: " << rank << ", size:" << size << std::endl;
                     readProcess(rank, num_io_processes - 1);
                 } else if(rank == num_io_processes - 1) {
-                    std::cout << "write rank: " << rank << ", size:" << size << std::endl;
+                    debugStream << "write rank: " << rank << ", size:" << size << std::endl;
                     writerProcess(rank);
                 } else {
-                    std::cout << "worker rank: " << rank << ", size:" << size << std::endl;
+                    debugStream << "worker rank: " << rank << ", size:" << size << std::endl;
                     workerProcess(rank);
                 }
             } else {
@@ -85,7 +86,8 @@ namespace sz3_split {
             }
             end_time = MPI_Wtime();
             double elapsed_time = end_time - start_time;
-            std::cout << "[stats] rank<" << rank << "> total run time: " << elapsed_time << "seconds" << std::endl;
+            debugStream << "[stats] rank<" << rank << "> total run time: " << elapsed_time << "seconds" << std::endl;
+            MPI_Barrier(MPI_COMM_WORLD);
         }
 
     private:
@@ -96,7 +98,7 @@ namespace sz3_split {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
+                std::vector<size_t> chunk_dimension = {depth, dimension[1], dimension[0]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             size_t chunk_size = sizeof(T) * conf.num;
@@ -119,7 +121,7 @@ namespace sz3_split {
             }
             SZ3::Timer temp(false);
             size_t org_chunk_size = chunk_size;
-            std::cout << "read process with rank " << rank << " start working!" << std::endl;
+            debugStream << "read process with rank " << rank << " start working!" << std::endl;
             std::vector<size_t> managed_worker;
             for(size_t worker_rank=num_io_processes; worker_rank<total_ranks; worker_rank++) {
                 if(map_worker_to_reader(worker_rank) == rank) {
@@ -129,7 +131,7 @@ namespace sz3_split {
             size_t next_worker_index = 0;
             for (size_t i = rank; i < num_iterations; i += number_of_read_processes) {
                 if (i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[1], dimension[0]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                     chunk_size = sizeof(T) * conf.num;
                 }
@@ -148,6 +150,16 @@ namespace sz3_split {
                     MPI_File_set_view(fh, offset, MPI_BYTE, MPI_BYTE, "native", MPI_INFO_NULL);
                     MPI_File_read_all(fh, chunk.dataBuffer.data(), conf.num * sizeof(T), MPI_BYTE, MPI_STATUS_IGNORE);
                     // Read data using MPI I/O
+                    debugStream << "[read] first 10 values in chunk [" << chunk.sequenceNumber << "]: ";
+                    for(int _index_test = 0; _index_test < 10; _index_test++) {
+                        debugStream << chunk.dataBuffer[_index_test] << " ";
+                    }
+                    debugStream << std::endl;
+                    debugStream << "[read] last 10 values in chunk [" << chunk.sequenceNumber << "] with offset " << offset << ": ";
+                        for(int _index_test = chunk.dataBuffer.size() - 10; _index_test < chunk.dataBuffer.size(); _index_test++) {
+                            debugStream << chunk.dataBuffer[_index_test] << " ";
+                        }
+                    debugStream << std::endl;
                     total_read_time += temp.stop();
                 } else {
                     temp.start();
@@ -163,7 +175,7 @@ namespace sz3_split {
                 size_t dest = managed_worker[next_worker_index];
                 next_worker_index = (next_worker_index + 1) % managed_worker.size();
 
-                std::cout << "read process with rank " << rank << " sending chunk "
+                debugStream << "read process with rank " << rank << " sending chunk "
                           << chunk.sequenceNumber << " to worker " << dest << std::endl;
                 if (i == num_iterations - 1 && leftover > 0) {
                     sendDataToWorker(dest, chunk, rank, leftover);
@@ -172,15 +184,15 @@ namespace sz3_split {
                 }
             }
 
-            std::cout << "[read stats]read process with rank " << rank << " finished. Total read time:" << total_read_time << std::endl;
+            debugStream << "[read stats]read process with rank " << rank << " finished. Total read time:" << total_read_time << std::endl;
 
             for(auto dest : managed_worker) {
-                std::cout << "[signal worker] read process with rank " << rank << " signaling worker rank " << dest << " to exit!" << std::endl;
+                debugStream << "[signal worker] read process with rank " << rank << " signaling worker rank " << dest << " to exit!" << std::endl;
                 signalReadCompleteToWorkers(rank, dest);
             }
 
             MPI_File_close(&fh);
-            std::cout << "[exit]read process with rank " << rank << "exited!" << std::endl;
+            debugStream << "[exit]read process with rank " << rank << "exited!" << std::endl;
         }
 
         void sendDataToWorker(int dest, DataChunk<T>& chunk, size_t read_rank, size_t layer_depth) {
@@ -198,10 +210,10 @@ namespace sz3_split {
                 pointer += sizeof(size_t);
 
                 memcpy(pointer, chunk.dataBuffer.data(), chunk.dataBuffer.size() * sizeof(T));
-//                std::cout << "read rank: " << read_rank << ", about to MPI_Send, buffer size:" << buffer.size() << std::endl;
+//                debugStream << "read rank: " << read_rank << ", about to MPI_Send, buffer size:" << buffer.size() << std::endl;
                 // Send chunk to worker
                 MPI_Send(buffer.data(), buffer.size(), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
-//                std::cout << "read rank: " << read_rank << ", finished MPI_Send, buffer size:" << buffer.size() << std::endl;
+//                debugStream << "read rank: " << read_rank << ", finished MPI_Send, buffer size:" << buffer.size() << std::endl;
             } else {
                 std::vector<char> buffer(chunk.cpdataBuffer.size() + 3 * sizeof(size_t));
                 char *pointer = buffer.data();
@@ -279,7 +291,7 @@ namespace sz3_split {
                 MPI_Recv(buffer.data(), chunk_size, MPI_BYTE, map_worker_to_reader(rank), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 char* pointer = buffer.data();
                 size_t buffer_size = *reinterpret_cast<size_t*>(pointer);
-                std::cout << "worker with rank " << rank << " received size: " << buffer_size << std::endl;
+                debugStream << "worker with rank " << rank << " received size: " << buffer_size << std::endl;
                 pointer += sizeof (size_t);
                 if (buffer_size == 0) {
                     printf("worker process %ld has completed!\n", rank);
@@ -293,7 +305,7 @@ namespace sz3_split {
                 DataChunk<T> chunk;
                 chunk.sequenceNumber = sequence_number;
                 chunk.conf.absErrorBound = eb;
-                std::vector<size_t> dims = {layer_depth, dimension[0], dimension[1]};
+                std::vector<size_t> dims = {layer_depth, dimension[1], dimension[0]};
 
                 chunk.conf.setDims(dims.begin(), dims.end());
                 int dest_writer = map_worker_to_writer(rank);
@@ -312,13 +324,24 @@ namespace sz3_split {
                     T *decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), buffer_size);
                     chunk.dataBuffer = std::vector<T>(chunk.conf.num);
                     memcpy(chunk.dataBuffer.data(), decData, chunk.conf.num * sizeof(T));
-                    std::cout << "worker with rank " << rank << " finished decompressing chunk " << chunk.sequenceNumber << std::endl;
+                    debugStream << "worker with rank " << rank << " finished decompressing chunk " << chunk.sequenceNumber << std::endl;
+                    int64_t offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
+                    debugStream << "[worker] first 10 values in chunk [" << chunk.sequenceNumber << "] with offset " << offset << ": ";
+                    for(int _index_test = 0; _index_test < 10; _index_test++) {
+                        debugStream << chunk.dataBuffer[_index_test] << " ";
+                    }
+                    debugStream << std::endl;
+                    debugStream << "[worker] last 10 values in chunk [" << chunk.sequenceNumber << "] with offset " << offset << ": ";
+                    for(int _index_test = chunk.dataBuffer.size() - 10; _index_test < chunk.dataBuffer.size(); _index_test++) {
+                        debugStream << chunk.dataBuffer[_index_test] << " ";
+                    }
+                    debugStream << std::endl;
                     sendDataToWriter(dest_writer, chunk, rank);
                     delete[] decData;
                 }
 
             }
-            std::cout<< "[exit] worker with rank " << rank << "finished and exited!" << std::endl;
+            debugStream<< "[exit] worker with rank " << rank << "finished and exited!" << std::endl;
         }
 
         void writerProcess(size_t rank){
@@ -333,7 +356,7 @@ namespace sz3_split {
 
             size_t end_counter = 0;
             MPI_Offset offset = 0;
-            std::cout << "writer with rank " << rank << " start running!" << std::endl;
+            debugStream << "writer with rank " << rank << " start running!" << std::endl;
             SZ3::Timer writer_timer(false);
             double total_write_time = 0;
 
@@ -377,7 +400,7 @@ namespace sz3_split {
                                               &status);
                         offset += sizeof(int64_t);
                         // Write data using MPI collective I/O
-                        std::cout << "[compress]writer with rank " << rank << " writing chunk " << chunk.sequenceNumber << std::endl;
+                        debugStream << "[compress]writer with rank " << rank << " writing chunk " << chunk.sequenceNumber << std::endl;
                         MPI_File_write_at_all(fh, offset, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size(),
                                               MPI_BYTE,
                                               &status);
@@ -400,9 +423,9 @@ namespace sz3_split {
                         }
                         MPI_Recv(buffer.data(), chunk_cp_size, MPI_BYTE, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                         char *pointer = buffer.data();
-                        size_t buffer_size = *reinterpret_cast<size_t *>(pointer);
+                        size_t data_buffer_num_elements = *reinterpret_cast<size_t *>(pointer);
                         pointer += sizeof(size_t);
-                        if (buffer_size == 0) {
+                        if (data_buffer_num_elements == 0) {
                             worker_finished[i] = true;
                             end_counter++;
                             continue;
@@ -410,10 +433,21 @@ namespace sz3_split {
                         size_t sequence_number = *reinterpret_cast<size_t *>(pointer);
                         pointer += sizeof(size_t);
                         chunk.sequenceNumber = sequence_number;
-                        chunk.dataBuffer = std::vector<T>(buffer_size);
-                        memcpy(chunk.dataBuffer.data(), pointer, buffer_size);
+                        chunk.dataBuffer = std::vector<T>(data_buffer_num_elements);
+                        memcpy(chunk.dataBuffer.data(), pointer, data_buffer_num_elements * sizeof(T));
                         offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
-                        std::cout << "[decompress]writer with rank " << rank << " writing chunk " << chunk.sequenceNumber << std::endl;
+                        debugStream << "[decompress] first 10 values in chunk [" << chunk.sequenceNumber << "] with offset " << offset << ": ";
+                        for(int _index_test = 0; _index_test < 10; _index_test++) {
+                            debugStream << chunk.dataBuffer[_index_test] << " ";
+                        }
+                        debugStream << std::endl;
+                        debugStream << "[decompress] last 10 values in chunk [" << chunk.sequenceNumber << "] with offset " << offset << ": ";
+                        for(int _index_test = chunk.dataBuffer.size() - 10; _index_test < chunk.dataBuffer.size(); _index_test++) {
+                            debugStream << chunk.dataBuffer[_index_test] << " ";
+                        }
+                        debugStream << std::endl;
+                        
+                        debugStream << "[decompress]writer with rank " << rank << " writing chunk " << chunk.sequenceNumber << std::endl;
                         writer_timer.start();
                         MPI_File_write_at_all(fh, offset, chunk.dataBuffer.data(), chunk.dataBuffer.size() * sizeof(T),
                                               MPI_BYTE, &status);
@@ -425,9 +459,9 @@ namespace sz3_split {
                 }
             }
             // Close the file
-            std::cout << "[write stats] writer with rank " << rank << " finished, total write time: " << total_write_time << std::endl;
+            debugStream << "[write stats] writer with rank " << rank << " finished, total write time: " << total_write_time << std::endl;
             MPI_File_close(&fh);
-            std::cout << "[exit] writer with rank " << rank << " exited!" << std::endl;
+            debugStream << "[exit] writer with rank " << rank << " exited!" << std::endl;
         }
     };
 

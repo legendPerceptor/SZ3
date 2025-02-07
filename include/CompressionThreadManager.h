@@ -14,6 +14,7 @@
 #include <vector>
 #include "SZ3/api/sz.hpp"
 #include "split_common.h"
+#include "DebugStream.hpp"
 
 using namespace std::chrono_literals;
 
@@ -48,7 +49,7 @@ namespace sz3_split {
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
+                std::vector<size_t> chunk_dimension = {depth, dimension[1], dimension[0]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             size_t chunk_size = sizeof(T) * conf.num;
@@ -69,7 +70,7 @@ namespace sz3_split {
             size_t org_chunk_size = chunk_size;
             for(size_t i = threadId;i<num_iterations;i+=totalReadThreads) {
                 if (i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[1], dimension[0]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                     chunk_size = sizeof(T) * conf.num;
                 }
@@ -111,7 +112,7 @@ namespace sz3_split {
             // indicate that reading is done
             {
                 std::lock_guard<std::mutex> lock(readMutex);
-                printf("finished all reading, total read time is %f\n", total_read_time);
+                debugStream << "finished all reading, total read time is " << total_read_time << std::endl;
                 read_done = true;
             }
             worker_can_put.notify_all();
@@ -145,20 +146,18 @@ namespace sz3_split {
                 //Compress the data chunk
                 if(is_compression_mode) {
                     size_t outSize = 0;
-                    printf("start to compress chunk %lu, chunk_size: %lu\n", chunk.sequenceNumber, sizeof(T) * chunk.dataBuffer.size());
+                    debugStream << "start to compress chunk [" <<  chunk.sequenceNumber << "], chunk_size: " << sizeof(T) * chunk.dataBuffer.size() << std::endl;
                     char *compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
-                    printf("finished compressing chunk %lu, compressed_chunk_size: %lu\n", chunk.sequenceNumber, outSize);
                     chunk.cpdataBuffer = std::vector<char>(outSize);
                     std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
                     delete[] compressedData;
                 } else {
-                    printf("start to decompress chunk %lu, compressed chunk size: %lu\n", chunk.sequenceNumber, chunk.cpdataBuffer.size());
+                    debugStream << "start to decompress chunk [" << chunk.sequenceNumber << "], compressed chunk size: " << chunk.cpdataBuffer.size() << std::endl;
                     T* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), chunk.cpdataBuffer.size());
                     size_t decompressed_size = chunk.conf.num * sizeof(T);
-                    printf("finished running SZ_decompress with decompressed_size: %lu\n", decompressed_size);
                     chunk.dataBuffer = std::vector<T>(chunk.conf.num);
                     std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
-                    printf("finished decompressing chunk %lu, decompressed_chunk_size: %lu\n", chunk.sequenceNumber, decompressed_size);
+                    debugStream << "finished decompressing chunk [" << chunk.sequenceNumber << "], decompressed_chunk_size: " << decompressed_size << std::endl;
                     delete[] decData;
                 }
 //                printf("finished compressing chunk %u\n", chunk.sequenceNumber);
@@ -197,7 +196,19 @@ namespace sz3_split {
 
                 while(!writeQueue.empty()) {
                     DataChunk<T> chunk = writeQueue.front();
-                    std::cout << "Writing chunk with sequence number " << chunk.sequenceNumber << std::endl;
+                    debugStream << "Writing chunk with sequence number " << chunk.sequenceNumber << std::endl;
+
+                    debugStream << is_compression_mode << "[writer] first 10 values in chunk [" << chunk.sequenceNumber << "]" << ": ";
+                    for(int _index_test = 0; _index_test < 10; _index_test++) {
+                        debugStream << chunk.dataBuffer[_index_test] << " ";
+                    }
+                    debugStream << std::endl;
+                    debugStream << is_compression_mode << "[writer] last 10 values in chunk [" << chunk.sequenceNumber << "]" << ": ";
+                    for(int _index_test = chunk.dataBuffer.size() - 10; _index_test < chunk.dataBuffer.size(); _index_test++) {
+                        debugStream << chunk.dataBuffer[_index_test] << " ";
+                    }
+                    debugStream << std::endl;
+
                     if(is_compression_mode) {
                         int64_t compressed_chunk_size = chunk.cpdataBuffer.size();
                         fout.write(reinterpret_cast<const char *>(&compressed_chunk_size), sizeof(int64_t));
@@ -243,16 +254,16 @@ namespace sz3_split {
             // Join threads
             for(int i=0;i<numReaders;++i) {
                 readers[i].join();
-                std::cout << "reader[" << i << "] has joined!" << std::endl;
+                debugStream << "reader[" << i << "] has joined!" << std::endl;
             }
-            std::cout << "Reader has joined!" << std::endl;
+            debugStream << "Reader has joined!" << std::endl;
             for (int i = 0; i < numWorkers; ++i) {
                 workers[i].join();
-                std::cout << "workers[" << i << "] has joined" << std::endl;
+                debugStream << "workers[" << i << "] has joined" << std::endl;
             }
             all_done = true;
             writer_can_write.notify_one();
-            std::cout << "Exit all threads and (de)compression finished" << std::endl;
+            debugStream << "Exit all threads and (de)compression finished" << std::endl;
             writer.join();
         }
     };
