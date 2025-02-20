@@ -13,3 +13,5 @@ install
 __pycache__/
 .vscode/
 python-examples/*.png
+*/*.sz3
+*/*.sz3.dp
