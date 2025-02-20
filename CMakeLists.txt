@@ -82,7 +82,7 @@ endif ()
 
 add_subdirectory(tools/sz3-split)
 add_subdirectory(tools/bindings)
-
+add_subdirectory(tools/sz3-collect)
 
 option(BUILD_H5Z_FILTER "build the H5Z-SZ3 filter" OFF)
 if (BUILD_H5Z_FILTER)
