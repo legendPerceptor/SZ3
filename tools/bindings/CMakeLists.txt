@@ -1,4 +1,4 @@
-cmake_policy(SET CMP0148 NEW)
+# cmake_policy(SET CMP0148 NEW)
 find_package(pybind11 REQUIRED)
 
 set(PROJECT_ROOT ${CMAKE_SOURCE_DIR})
