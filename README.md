@@ -1,6 +1,6 @@
-# SZ3 layer-by-layer compression: A NUMA-adapted compression method
+# SZ3 layer-by-layer compression: high performance parallel compression
 
-This branch serves as an add-on to the original SZ3 compression method.
+This repo serves as an add-on to the original SZ3 compression method.
 The traditional compression methods require loading the whole dataset into memory,
 resulting in out-of-memory (OOM) failures. Also, there was no way to compress a single tensor in parallel.
 We develop a layer-by-layer compression technique that allows users to compress very large 3D tensors with
@@ -98,4 +98,4 @@ echo "!!!decompress test finished!!"
 date
 ```
 
-We also created Python binding for the program for ease of use in the Python language. Users can expect very similar usage of the above programs in Python. More detailed description can be found in [tools/bindings/README.md](tools/bindings/README.md).
+We created Python binding for the program for ease of use in the Python language. Users can expect very similar usage of the above programs in Python. More detailed description can be found in [tools/bindings/README.md](tools/bindings/README.md).

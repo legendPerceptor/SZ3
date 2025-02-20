@@ -80,3 +80,22 @@ You can also run the multi-threading version with the same python file but do no
 ```bash
 python sz3py_mpi.py --use-mpi --threads 4
 ```
+
+We also provide a convenient tool to collect data for predicting compression performance. The following function runs the prediction method and the standard sz3 compression and decompression, so the collected data contains both data for prediction and actual compression performance.
+
+```python
+import sz3py
+import pandas as pd
+
+collected_data = sz3py.collect_prediction_data(
+    inputFilePath=str(temperature_raw_file_path),
+    dims=[512, 512, 512],
+    error_bound=0.1
+)
+
+print(collected_data)
+columns = collected_data[0]
+data = collected_data[1:]
+df = pd.DataFrame(data, columns=columns)
+print(df)
+```
