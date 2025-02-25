@@ -182,7 +182,8 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
                       << ", write time: " << total_write_time << std::endl;
         } else {
             // 300 is the fastest dimension
-            conf.setDims(dimension.begin(), dimension.end());
+            // We ask users to provide the dimension in x,y,z order (x is the fastest changing dimension).
+            conf.setDims(dimension.rbegin(), dimension.rend());
             conf.absErrorBound = eb;
             std::vector<TYPE> buffer(conf.num);
             SZ3::readfile<TYPE>(input_file.c_str(), conf.num, buffer.data());
