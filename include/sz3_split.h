@@ -121,7 +121,7 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
+                std::vector<size_t> chunk_dimension = {depth, dimension[1], dimension[0]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -147,7 +147,7 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             }
             for(size_t i = 0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[1], dimension[0]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                     chunk_size = sizeof(TYPE) * conf.num;
                 }
@@ -244,7 +244,7 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             if (depth == 1) {
                 conf.setDims(dimension.begin(), dimension.end() - 1);
             } else {
-                std::vector<size_t> chunk_dimension = {depth, dimension[0], dimension[1]};
+                std::vector<size_t> chunk_dimension = {depth, dimension[1], dimension[0]};
                 conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
             }
             conf.absErrorBound = eb;
@@ -265,7 +265,7 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             }
             for(int i=0;i<num_iterations;i++) {
                 if(i == num_iterations - 1 && leftover > 0) {
-                    std::vector<size_t> chunk_dimension = {leftover, dimension[0], dimension[1]};
+                    std::vector<size_t> chunk_dimension = {leftover, dimension[1], dimension[0]};
                     conf.setDims(chunk_dimension.begin(), chunk_dimension.end());
                 }
                 timer.start();
@@ -292,7 +292,8 @@ void parseCompressOptions(int argc, char **argv, int &threads, std::string &raw_
             debugStream << "compression ratio:" << std::fixed << std::setprecision(2) << cr << ", compression_time: " << total_decompress_time << ", read time: " << total_read_time
                       << ", write time: " << total_write_time << std::endl;
         } else {
-            conf.setDims(dimension.begin(), dimension.end());
+            // We ask users to provide the dimension in x, y, z (where x is the fastest changing dimension)
+            conf.setDims(dimension.rbegin(), dimension.rend());
             conf.absErrorBound = eb;
             size_t cmpSize;
             auto cmpData = SZ3::readfile<char>(input_file.c_str(), cmpSize);
