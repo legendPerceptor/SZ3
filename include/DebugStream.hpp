@@ -5,7 +5,7 @@
 
 // A custom buffer that discards everything
 class NullBuffer : public std::streambuf {
-protected:
+  protected:
     // Called when there's data to write into the buffer
     int overflow(int c) override {
         // Just pretend we handled the character successfully
@@ -15,18 +15,19 @@ protected:
 
 // A custom ostream that uses NullBuffer
 class NullStream : public std::ostream {
-public:
+  public:
     NullStream() : std::ostream(&m_sb) {}
-private:
+
+  private:
     NullBuffer m_sb;
 };
 
 // Depending on DEBUG_LOG, choose where debugStream points
 #ifdef DEBUG_LOG
-   // If DEBUG_LOG is defined, debugStream is std::cout
-   inline std::ostream& debugStream = std::cout;
+// If DEBUG_LOG is defined, debugStream is std::cout
+inline std::ostream& debugStream = std::cout;
 #else
-   // If not, debugStream is a null stream that discards everything
-   inline NullStream debugNullStream;          // We'll instantiate it once
-   inline std::ostream& debugStream = debugNullStream; 
+// If not, debugStream is a null stream that discards everything
+inline NullStream debugNullStream; // We'll instantiate it once
+inline std::ostream& debugStream = debugNullStream;
 #endif

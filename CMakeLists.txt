@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 project(SZ3 VERSION 3.2.2)
 set(SZ3_DATA_VERSION 3.2.1)
-# add_compile_definitions(DEBUG_LOG)
+#add_compile_definitions(DEBUG_LOG)
 
 include(GNUInstallDirs)
 include(CTest)

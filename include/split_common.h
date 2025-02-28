@@ -8,21 +8,20 @@
 #include <getopt.h>
 
 namespace sz3_split {
-    SZ3::Config defaultConfig() {
-        SZ3::Config conf;
-        conf.errorBoundMode = SZ3::EB_ABS; // refer to def.hpp for all supported error bound mode
-        conf.absErrorBound = 1E-3; // absolute error bound 1e-3
-        return conf;
-    }
-
-    template<typename T>
-    struct DataChunk {
-        size_t id;
-        size_t sequenceNumber;
-        std::vector<T> dataBuffer;
-        std::vector<char> cpdataBuffer;
-        SZ3::Config conf;
-    };
+SZ3::Config defaultConfig() {
+    SZ3::Config conf;
+    conf.errorBoundMode = SZ3::EB_ABS; // refer to def.hpp for all supported error bound mode
+    conf.absErrorBound = 1E-3;         // absolute error bound 1e-3
+    return conf;
 }
 
-#endif //SZ3_SPLIT_COMMON_H
+template <typename T> struct DataChunk {
+    size_t id;
+    size_t sequenceNumber;
+    std::vector<T> dataBuffer;
+    std::vector<char> cpdataBuffer;
+    SZ3::Config conf;
+};
+} // namespace sz3_split
+
+#endif // SZ3_SPLIT_COMMON_H
