@@ -10,6 +10,7 @@
 #include "split_common.h"
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -40,6 +41,7 @@ template <typename T> class CompressionThreadManager {
     size_t read_queue_max_size;
     size_t write_queue_max_size;
     bool is_compression_mode;
+    bool use_logscale;
 
     void readThread(size_t threadId, size_t totalReadThreads) {
         assert(dimension.size() == 3);
@@ -148,6 +150,11 @@ template <typename T> class CompressionThreadManager {
                 debugStream << "start to compress chunk [" << chunk.sequenceNumber
                             << "], chunk_size: " << sizeof(T) * chunk.dataBuffer.size()
                             << std::endl;
+                if (use_logscale) {
+                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                   chunk.dataBuffer.begin(),
+                                   [](double val) { return std::log(val); });
+                }
                 char* compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 chunk.cpdataBuffer = std::vector<char>(outSize);
                 std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
@@ -161,6 +168,11 @@ template <typename T> class CompressionThreadManager {
                 size_t decompressed_size = chunk.conf.num * sizeof(T);
                 chunk.dataBuffer = std::vector<T>(chunk.conf.num);
                 std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                if (use_logscale) {
+                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                   chunk.dataBuffer.begin(),
+                                   [](double val) { return std::exp(val); });
+                }
                 debugStream << "finished decompressing chunk [" << chunk.sequenceNumber
                             << "], decompressed_chunk_size: " << decompressed_size << std::endl;
                 delete[] decData;
@@ -240,7 +252,8 @@ template <typename T> class CompressionThreadManager {
   public:
     CompressionThreadManager(std::string input_file, std::string output_file,
                              std::vector<size_t> dimension, T eb, size_t depth,
-                             size_t num_of_threads, size_t num_of_readers, bool is_compression)
+                             size_t num_of_threads, size_t num_of_readers, bool is_compression,
+                             bool use_logscale)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth), num_of_threads(num_of_threads),
           num_of_readers(num_of_readers) {
@@ -250,6 +263,7 @@ template <typename T> class CompressionThreadManager {
         all_done = false;
         expectedSequenceNumber = 0;
         is_compression_mode = is_compression;
+        this->use_logscale = use_logscale;
     }
 
     void startThreads() {
@@ -280,6 +294,16 @@ template <typename T> class CompressionThreadManager {
         writer_can_write.notify_one();
         debugStream << "Exit all threads and (de)compression finished" << std::endl;
         writer.join();
+
+        auto outSize = std::filesystem::file_size(output_file);
+        auto inputSize = std::filesystem::file_size(input_file);
+        std::cout << "output file size: " << outSize << ", input file size: " << inputSize
+                  << std::endl;
+        if (is_compression_mode) {
+            std::cout << "compression ratio: " << (double)inputSize / outSize << std::endl;
+        } else {
+            std::cout << "compression ratio: " << (double)outSize / inputSize << std::endl;
+        }
     }
 };
 

@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mpi.h>
@@ -27,15 +28,16 @@ template <typename T> class CompressionMPIManager {
     T eb;
     size_t depth;
     bool is_compression_mode;
+    bool use_logscale;
     size_t total_ranks;
 
   public:
     CompressionMPIManager(std::string input_file, std::string output_file,
                           std::vector<size_t> dimension, T eb, size_t depth, bool is_compression,
-                          size_t num_io_processes)
+                          size_t num_io_processes, bool use_logscale)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth),
-          is_compression_mode(is_compression), num_io_processes(num_io_processes) {}
+          is_compression_mode(is_compression), num_io_processes(num_io_processes), use_logscale(use_logscale) {}
 
     void startMPI() {
         int is_mpi_initialized = 0;
@@ -88,6 +90,17 @@ template <typename T> class CompressionMPIManager {
         debugStream << "[stats] rank<" << rank << "> total run time: " << elapsed_time << "seconds"
                     << std::endl;
         MPI_Barrier(MPI_COMM_WORLD);
+        if (rank == 0) {
+            auto outSize = std::filesystem::file_size(output_file);
+            auto inputSize = std::filesystem::file_size(input_file);
+            std::cout << "output file size: " << outSize << ", input file size: " << inputSize
+                      << std::endl;
+            if (is_compression_mode) {
+                std::cout << "compression ratio: " << (double)inputSize / outSize << std::endl;
+            } else {
+                std::cout << "compression ratio: " << (double)outSize / inputSize << std::endl;
+            }
+        }
     }
 
   private:
@@ -324,6 +337,11 @@ template <typename T> class CompressionMPIManager {
                 chunk.dataBuffer = std::vector<T>(buffer_size);
                 memcpy(chunk.dataBuffer.data(), pointer, buffer_size * sizeof(T));
                 size_t outSize = 0;
+                if (use_logscale) {
+                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                   chunk.dataBuffer.begin(),
+                                   [](double val) { return std::log(val); });
+                }
                 char* compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 chunk.cpdataBuffer = std::vector<char>(outSize);
                 memcpy(chunk.cpdataBuffer.data(), compressedData, outSize);
@@ -335,6 +353,11 @@ template <typename T> class CompressionMPIManager {
                 T* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), buffer_size);
                 chunk.dataBuffer = std::vector<T>(chunk.conf.num);
                 memcpy(chunk.dataBuffer.data(), decData, chunk.conf.num * sizeof(T));
+                if (use_logscale) {
+                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                   chunk.dataBuffer.begin(),
+                                   [](double val) { return std::exp(val); });
+                }
                 debugStream << "worker with rank " << rank << " finished decompressing chunk "
                             << chunk.sequenceNumber << std::endl;
                 int64_t offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);

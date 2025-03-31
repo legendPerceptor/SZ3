@@ -3,6 +3,11 @@ project(SZ3 VERSION 3.2.2)
 set(SZ3_DATA_VERSION 3.2.1)
 #add_compile_definitions(DEBUG_LOG)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_compile_options(-w)
+
 include(GNUInstallDirs)
 include(CTest)
 
