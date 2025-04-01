@@ -287,22 +287,22 @@ int compress(int argc, char** argv) {
     } else if (!use_mpi) { // multi-threading for layer-by-layer compression
         if (isfloat64) {
             CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                     threads, 1, true, use_logscale);
+                                                     threads, 1, true, use_logscale, skip_header_size);
             manager.startThreads();
         } else {
             CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                    threads, 1, true, use_logscale);
+                                                    threads, 1, true, use_logscale, skip_header_size);
             manager.startThreads();
         }
     } else { // use mpi to compress
         debugStream << "start using MPI to compress data" << std::endl;
         if (isfloat64) {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  true, threads, use_logscale);
+                                                  true, threads, use_logscale, skip_header_size);
             manager.startMPI();
         } else {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 true, threads, use_logscale);
+                                                 true, threads, use_logscale, skip_header_size);
             manager.startMPI();
         }
     }
@@ -403,7 +403,7 @@ int decompress_impl(const std::string& input_file, const std::string& output_fil
         if (skip_header_size > 0) {
             fout.write(cmpData.get(), skip_header_size);
         }
-        fout.write(reinterpret_cast<const char *>(DPbuffer), conf.num * sizeof(TYPE));
+        fout.write(reinterpret_cast<const char *>(DPbuffer.data()), conf.num * sizeof(TYPE));
         fout.close();
         // SZ3::writefile<TYPE>(output_file.c_str(), DPbuffer.data(), conf.num);
         delete[] decData;
@@ -450,11 +450,11 @@ int decompress(int argc, char** argv) {
         std::cout << "start using MPI to decompress data" << std::endl;
         if (isfloat64) {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  false, threads, use_logscale);
+                                                  false, threads, use_logscale, skip_header_size);
             manager.startMPI();
         } else {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 false, threads, use_logscale);
+                                                 false, threads, use_logscale, skip_header_size);
             manager.startMPI();
         }
     }
