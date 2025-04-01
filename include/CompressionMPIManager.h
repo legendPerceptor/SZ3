@@ -25,7 +25,7 @@ template <typename T> class CompressionMPIManager {
     std::string output_file;
     std::vector<size_t> dimension;
     size_t num_io_processes;
-    T eb;
+    double eb;
     size_t depth;
     bool is_compression_mode;
     bool use_logscale;
@@ -34,7 +34,7 @@ template <typename T> class CompressionMPIManager {
 
   public:
     CompressionMPIManager(std::string input_file, std::string output_file,
-                          std::vector<size_t> dimension, T eb, size_t depth, bool is_compression,
+                          std::vector<size_t> dimension, double eb, size_t depth, bool is_compression,
                           size_t num_io_processes, bool use_logscale, int skip_header_size)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth),
@@ -338,27 +338,57 @@ template <typename T> class CompressionMPIManager {
                 chunk.dataBuffer = std::vector<T>(buffer_size);
                 memcpy(chunk.dataBuffer.data(), pointer, buffer_size * sizeof(T));
                 size_t outSize = 0;
+                char* compressedData;
                 if (use_logscale) {
-                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
-                                   chunk.dataBuffer.begin(),
-                                   [](double val) { return std::log(val); });
+                    if constexpr (std::is_integral_v<T>) {
+                        std::vector<float> floatBuffer(chunk.dataBuffer.size());
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                       floatBuffer.begin(),
+                                       [](double val) { return std::log(val); });
+                        compressedData =
+                            SZ_compress<float>(chunk.conf, floatBuffer.data(), outSize);
+                    } else {
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                       chunk.dataBuffer.begin(),
+                                       [](T val) { return static_cast<T>(std::log(val)); });
+                        compressedData =
+                            SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                    }
+                } else {
+                    compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 }
-                char* compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 chunk.cpdataBuffer = std::vector<char>(outSize);
-                memcpy(chunk.cpdataBuffer.data(), compressedData, outSize);
+                std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
                 delete[] compressedData;
                 sendDataToWriter(dest_writer, chunk, rank);
             } else {
                 chunk.cpdataBuffer = std::vector<char>(buffer_size);
                 memcpy(chunk.cpdataBuffer.data(), pointer, buffer_size);
-                T* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(), buffer_size);
                 chunk.dataBuffer = std::vector<T>(chunk.conf.num);
-                memcpy(chunk.dataBuffer.data(), decData, chunk.conf.num * sizeof(T));
                 if (use_logscale) {
-                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
-                                   chunk.dataBuffer.begin(),
-                                   [](double val) { return std::exp(val); });
+                    if constexpr (std::is_integral_v<T>) {
+                        auto* decData = SZ_decompress<float>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                             chunk.cpdataBuffer.size());
+                        std::vector<float> floatDPBuffer(chunk.conf.num);
+                        std::copy_n(decData, chunk.conf.num, floatDPBuffer.begin());
+                        delete[] decData;
+                        std::transform(floatDPBuffer.begin(), floatDPBuffer.end(), chunk.dataBuffer.begin(),
+                                       [](float val) { return static_cast<T>(std::exp(val)); });
+                    } else {
+                        auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                         chunk.cpdataBuffer.size());
+                        std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                        delete[] decData;
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(), chunk.dataBuffer.begin(),
+                                       [](T val) { return static_cast<T>(std::exp(val)); });
+                    }
+                } else {
+                    auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                     chunk.cpdataBuffer.size());
+                    std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                    delete[] decData;
                 }
+
                 debugStream << "worker with rank " << rank << " finished decompressing chunk "
                             << chunk.sequenceNumber << std::endl;
                 int64_t offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
@@ -376,7 +406,6 @@ template <typename T> class CompressionMPIManager {
                 }
                 debugStream << std::endl;
                 sendDataToWriter(dest_writer, chunk, rank);
-                delete[] decData;
             }
         }
         debugStream << "[exit] worker with rank " << rank << "finished and exited!" << std::endl;

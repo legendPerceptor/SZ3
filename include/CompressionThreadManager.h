@@ -34,7 +34,7 @@ template <typename T> class CompressionThreadManager {
     std::string input_file;
     std::string output_file;
     std::vector<size_t> dimension;
-    T eb;
+    double eb;
     size_t depth;
     size_t num_of_threads;
     size_t num_of_readers;
@@ -154,12 +154,25 @@ template <typename T> class CompressionThreadManager {
                 debugStream << "start to compress chunk [" << chunk.sequenceNumber
                             << "], chunk_size: " << sizeof(T) * chunk.dataBuffer.size()
                             << std::endl;
+                char* compressedData;
                 if (use_logscale) {
-                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
-                                   chunk.dataBuffer.begin(),
-                                   [](double val) { return std::log(val); });
+                    if constexpr (std::is_integral_v<T>) {
+                        std::vector<float> floatBuffer(chunk.dataBuffer.size());
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                       floatBuffer.begin(),
+                                       [](double val) { return std::log(val); });
+                        compressedData =
+                            SZ_compress<float>(chunk.conf, floatBuffer.data(), outSize);
+                    } else {
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                       chunk.dataBuffer.begin(),
+                                       [](T val) { return static_cast<T>(std::log(val)); });
+                        compressedData =
+                            SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                    }
+                } else {
+                    compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 }
-                char* compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
                 chunk.cpdataBuffer = std::vector<char>(outSize);
                 std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
                 delete[] compressedData;
@@ -167,19 +180,35 @@ template <typename T> class CompressionThreadManager {
                 debugStream << "start to decompress chunk [" << chunk.sequenceNumber
                             << "], compressed chunk size: " << chunk.cpdataBuffer.size()
                             << std::endl;
-                T* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
-                                              chunk.cpdataBuffer.size());
-                size_t decompressed_size = chunk.conf.num * sizeof(T);
+
                 chunk.dataBuffer = std::vector<T>(chunk.conf.num);
-                std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
                 if (use_logscale) {
-                    std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
-                                   chunk.dataBuffer.begin(),
-                                   [](double val) { return std::exp(val); });
+                    if constexpr (std::is_integral_v<T>) {
+                        auto* decData = SZ_decompress<float>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                             chunk.cpdataBuffer.size());
+                        std::vector<float> floatDPBuffer(chunk.conf.num);
+                        std::copy_n(decData, chunk.conf.num, floatDPBuffer.begin());
+                        delete[] decData;
+                        std::transform(floatDPBuffer.begin(), floatDPBuffer.end(), chunk.dataBuffer.begin(),
+                                       [](float val) { return static_cast<T>(std::exp(val)); });
+                    } else {
+                        auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                         chunk.cpdataBuffer.size());
+                        std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                        delete[] decData;
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(), chunk.dataBuffer.begin(),
+                                       [](T val) { return static_cast<T>(std::exp(val)); });
+                    }
+                } else {
+                    auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                     chunk.cpdataBuffer.size());
+                    std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
+                    delete[] decData;
                 }
+
+                size_t decompressed_size = chunk.conf.num * sizeof(T);
                 debugStream << "finished decompressing chunk [" << chunk.sequenceNumber
                             << "], decompressed_chunk_size: " << decompressed_size << std::endl;
-                delete[] decData;
             }
             //                printf("finished compressing chunk %u\n", chunk.sequenceNumber);
             size_t sequence_number = chunk.sequenceNumber;
@@ -212,7 +241,8 @@ template <typename T> class CompressionThreadManager {
         if (skip_header_size > 0) {
             std::ifstream fin(input_file.c_str(), std::ios::binary | std::ios::in);
             if (!fin.is_open()) {
-                std::cerr << "Error opening the input file in the write thread: " << input_file.c_str() << std::endl;
+                std::cerr << "Error opening the input file in the write thread: "
+                          << input_file.c_str() << std::endl;
             }
             std::vector<char> header(skip_header_size);
             fin.read(header.data(), skip_header_size);
@@ -264,7 +294,7 @@ template <typename T> class CompressionThreadManager {
 
   public:
     CompressionThreadManager(std::string input_file, std::string output_file,
-                             std::vector<size_t> dimension, T eb, size_t depth,
+                             std::vector<size_t> dimension, double eb, size_t depth,
                              size_t num_of_threads, size_t num_of_readers, bool is_compression,
                              bool use_logscale, int skip_header_size)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
