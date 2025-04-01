@@ -42,6 +42,7 @@ template <typename T> class CompressionThreadManager {
     size_t write_queue_max_size;
     bool is_compression_mode;
     bool use_logscale;
+    int skip_header_size;
 
     void readThread(size_t threadId, size_t totalReadThreads) {
         assert(dimension.size() == 3);
@@ -58,6 +59,9 @@ template <typename T> class CompressionThreadManager {
         if (!fin.is_open()) {
             std::cerr << "Error opening the file: " << input_file.c_str() << std::endl;
             exit(EXIT_FAILURE);
+        }
+        if (skip_header_size > 0) {
+            fin.seekg(skip_header_size, std::ios::beg);
         }
 
         double total_read_time = 0;
@@ -85,7 +89,7 @@ template <typename T> class CompressionThreadManager {
                 // chunk_size
                 size_t start_position = i * org_chunk_size * totalReadThreads;
                 // Set file pointer to the calculated start position
-                fin.seekg(start_position, std::ios::beg);
+                fin.seekg(skip_header_size + start_position, std::ios::beg);
                 temp.start();
                 fin.read(reinterpret_cast<char*>(chunk.dataBuffer.data()), chunk_size);
                 total_read_time += temp.stop();
@@ -205,6 +209,15 @@ template <typename T> class CompressionThreadManager {
             std::cerr << "Error opening the file to write: " << output_file.c_str() << std::endl;
             exit(EXIT_FAILURE);
         }
+        if (skip_header_size > 0) {
+            std::ifstream fin(input_file.c_str(), std::ios::binary | std::ios::in);
+            if (!fin.is_open()) {
+                std::cerr << "Error opening the input file in the write thread: " << input_file.c_str() << std::endl;
+            }
+            std::vector<char> header(skip_header_size);
+            fin.read(header.data(), skip_header_size);
+            fout.write(header.data(), skip_header_size);
+        }
         while (true) {
             std::unique_lock<std::mutex> writeLock(writeMutex);
             writer_can_write.wait(writeLock, [this] { return !writeQueue.empty() || all_done; });
@@ -253,7 +266,7 @@ template <typename T> class CompressionThreadManager {
     CompressionThreadManager(std::string input_file, std::string output_file,
                              std::vector<size_t> dimension, T eb, size_t depth,
                              size_t num_of_threads, size_t num_of_readers, bool is_compression,
-                             bool use_logscale)
+                             bool use_logscale, int skip_header_size)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth), num_of_threads(num_of_threads),
           num_of_readers(num_of_readers) {
@@ -264,6 +277,7 @@ template <typename T> class CompressionThreadManager {
         expectedSequenceNumber = 0;
         is_compression_mode = is_compression;
         this->use_logscale = use_logscale;
+        this->skip_header_size = skip_header_size;
     }
 
     void startThreads() {

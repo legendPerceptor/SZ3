@@ -30,14 +30,15 @@ template <typename T> class CompressionMPIManager {
     bool is_compression_mode;
     bool use_logscale;
     size_t total_ranks;
+    int skip_header_size;
 
   public:
     CompressionMPIManager(std::string input_file, std::string output_file,
                           std::vector<size_t> dimension, T eb, size_t depth, bool is_compression,
-                          size_t num_io_processes, bool use_logscale)
+                          size_t num_io_processes, bool use_logscale, int skip_header_size)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth),
-          is_compression_mode(is_compression), num_io_processes(num_io_processes), use_logscale(use_logscale) {}
+          is_compression_mode(is_compression), num_io_processes(num_io_processes), use_logscale(use_logscale), skip_header_size(skip_header_size) {}
 
     void startMPI() {
         int is_mpi_initialized = 0;
@@ -124,7 +125,7 @@ template <typename T> class CompressionMPIManager {
             MPI_File_open(MPI_COMM_SELF, input_file.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
         MPI_File_get_size(fh, &file_size);
 
-        MPI_Offset dp_offset = 0;
+        MPI_Offset dp_offset = skip_header_size;
 
         double total_read_time = 0;
         size_t num_iterations = dimension[2] / depth;
@@ -159,7 +160,7 @@ template <typename T> class CompressionMPIManager {
                 // chunk_size
                 temp.start();
                 // Calculate the offset for reading
-                MPI_Offset offset = i * org_chunk_size;
+                MPI_Offset offset = i * org_chunk_size + skip_header_size;
                 // Set the file view for each process
                 MPI_File_set_view(fh, offset, MPI_BYTE, MPI_BYTE, "native", MPI_INFO_NULL);
                 MPI_File_read_all(fh, chunk.dataBuffer.data(), conf.num * sizeof(T), MPI_BYTE,
@@ -389,11 +390,24 @@ template <typename T> class CompressionMPIManager {
                       MPI_INFO_NULL, &fh);
         size_t chunk_cp_size = dimension[0] * dimension[1] * depth * sizeof(T) + sizeof(size_t) * 3;
 
+        if (skip_header_size > 0) {
+            if ((is_compression_mode && rank == num_io_processes - 1)
+                || (!is_compression_mode && rank == 1)) {
+                std::ifstream fin(input_file.c_str(), std::ios::binary);
+                if (!fin.is_open()) {
+                    std::cerr << "Error opening input file for skipping header size in the writer process: " << input_file.c_str() << std::endl;
+                }
+                std::vector<char> header_buffer(skip_header_size);
+                fin.read(header_buffer.data(), skip_header_size);
+                MPI_File_write_at(fh, 0, header_buffer.data(),
+                                          header_buffer.size(), MPI_BYTE, &status);
+            }
+        }
         std::vector<char> buffer(chunk_cp_size);
         DataChunk<T> chunk;
 
         size_t end_counter = 0;
-        MPI_Offset offset = 0;
+        MPI_Offset offset = skip_header_size;
         debugStream << "writer with rank " << rank << " start running!" << std::endl;
         SZ3::Timer writer_timer(false);
         double total_write_time = 0;
@@ -475,7 +489,7 @@ template <typename T> class CompressionMPIManager {
                     chunk.sequenceNumber = sequence_number;
                     chunk.dataBuffer = std::vector<T>(data_buffer_num_elements);
                     memcpy(chunk.dataBuffer.data(), pointer, data_buffer_num_elements * sizeof(T));
-                    offset = sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
+                    offset = skip_header_size + sequence_number * dimension[0] * dimension[1] * depth * sizeof(T);
                     debugStream << "[decompress] first 10 values in chunk [" << chunk.sequenceNumber
                                 << "] with offset " << offset << ": ";
                     for (int _index_test = 0; _index_test < 10; _index_test++) {
