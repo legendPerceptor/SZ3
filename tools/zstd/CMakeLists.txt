@@ -60,17 +60,17 @@ target_include_directories(zstd
   )
 
 
-install(TARGETS zstd EXPORT SZ3Targets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} 
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-install(FILES 
-  deprecated/zbuff.h 
-  dictBuilder/zdict.h 
-  zstd.h 
-  common/zstd_errors.h 
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/
-  )
-
-export(TARGETS zstd FILE zstd.cmake)
+#install(TARGETS zstd EXPORT SZ3Targets
+#  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#)
+#install(FILES
+#  deprecated/zbuff.h
+#  dictBuilder/zdict.h
+#  zstd.h
+#  common/zstd_errors.h
+#  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/
+#  )
+#
+#export(TARGETS zstd FILE zstd.cmake)
 
