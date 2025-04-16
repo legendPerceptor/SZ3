@@ -1,0 +1,21 @@
+global:
+  metrics_output_folder: "/lcrc/project/ECP-EZ/yuanjian/APS-data/apr15-metrics"
+  large_file_output_folder: "/lcrc/project/ECP-EZ/yuanjian/APS-data/apr15-logscale-largefiles"
+
+datasets:
+  - name: "weijian_event_detecion"
+    dimension: [2048, 2048, 1440]
+    fileNames: ["base.edf.ge5", "test.edf.ge5"]
+    ext: ".ge5"
+    folder: /lcrc/project/ECP-EZ/yuanjian/APS-data
+    # ebs: [1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 100]
+    ebs: [0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0001]
+    depths: [64]
+    data_type: "uint16"
+
+compressors:
+  - name: "sz3-split"
+    ext: ".sz3split"
+    executable: "/home/ac.yuanjian/Research/SZ3/bebop/tools/sz3-split/sz3_split"
+    compress_params: ["compress", "-i", "$fileName", "-o", "$compressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale"]
+    decompress_params: ["decompress", "-i", "$compressedFileName", "-o", "$decompressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale"]
