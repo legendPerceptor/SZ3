@@ -5,10 +5,11 @@ import os
 from pydantic import BaseModel
 import logging
 from datetime import datetime
+import re
 
 DATA_DIR = Path("/lcrc/project/ECP-EZ/yuanjian/APS-data/")
 EXPERIMENT_DIR = Path("/lcrc/project/ECP-EZ/yuanjian/APS-data/experiment-apr4")
-DECOMPRESSED_DIR = DATA_DIR / "apr3-large-files" / "decompressed_files" / "problematic"
+DECOMPRESSED_DIR = DATA_DIR / "apr15-logscale-largefiles" / "decompressed_files"
 
 
 baseline_scan_path = DATA_DIR / "base.edf.ge5"
@@ -56,8 +57,19 @@ logger.info("The benchmark for rare event detection has started!")
 
 print("Starting the detection benchmark for decompressed files")
 
+
+def extract_middle_number(filename):
+    match = re.search(r"ge5-([\d.]+)-sz3", str(filename))
+    return (
+        float(match.group(1)) if match else float("inf")
+    )  # fallback in case of no match
+
+
+dp_files = list(DECOMPRESSED_DIR.iterdir())
+sorted_dpfiles = sorted(dp_files, key=extract_middle_number)
+
 results = []
-for i, file in enumerate(DECOMPRESSED_DIR.iterdir()):
+for i, file in enumerate(sorted_dpfiles):
     print(f"DP File {i}: {file}")
     REI_score, time_consumed = get_REI_from_testing_scan(
         trained_encoder_path=trained_encoder_path,
@@ -85,11 +97,19 @@ REI_score, time_consumed = get_REI_from_testing_scan(
 )
 
 print("The standard REI score is ", REI_score)
-logger.info("the standard REI score is ", REI_score)
+logger.info(f"the standard REI score is {REI_score}")
+
+REIs = []
+consumed_times = []
 for result in results:
+    REIs.append(result.REI_score)
+    consumed_times.append(result.time_consumed)
     print(
-        f"{result.filename} has REI Score {REI_score}, and the time consumed is {time_consumed}"
+        f"{result.filename} has REI Score {result.REI_score}, and the time consumed is {result.time_consumed}"
     )
     logger.info(
-        f"{result.filename} has REI Score {REI_score}, and the time consumed is {time_consumed}"
+        f"{result.filename} has REI Score {result.REI_score}, and the time consumed is {result.time_consumed}"
     )
+
+print(f"REI Scores: {REIs}")
+print(f"Consumed Times: {consumed_times}")
