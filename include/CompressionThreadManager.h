@@ -116,7 +116,7 @@ template <typename T> class CompressionThreadManager {
         // indicate that reading is done
         {
             std::lock_guard<std::mutex> lock(readMutex);
-            debugStream << "finished all reading, total read time is " << total_read_time
+            std::cout << "finished all reading, total read time is " << total_read_time
                         << std::endl;
             read_done = true;
         }

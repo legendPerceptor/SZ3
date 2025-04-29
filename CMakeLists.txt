@@ -14,8 +14,8 @@ include(CTest)
 
 option(BUILD_SHARED_LIBS "build shared libraries by default" ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_C_COMPILER mpicc)
-set(CMAKE_CXX_COMPILER mpicxx)
+#set(CMAKE_C_COMPILER mpicc)
+#set(CMAKE_CXX_COMPILER mpicxx)
 if (MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 else () #-Wunused-parameter -Wsign-compare
@@ -88,6 +88,8 @@ endif ()
 
 # add_subdirectory(tools/sz3)
 # add_subdirectory(tools/sz3c)
+
+add_subdirectory(vendors/zfpw)
 
 add_subdirectory(tools/sz3-split)
 add_subdirectory(tools/bindings)
