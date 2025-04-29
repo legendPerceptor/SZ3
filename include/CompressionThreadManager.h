@@ -8,6 +8,8 @@
 #include "DebugStream.hpp"
 #include "SZ3/api/sz.hpp"
 #include "split_common.h"
+#include "zfp.h"
+#include "zfpw.h"
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -43,6 +45,7 @@ template <typename T> class CompressionThreadManager {
     bool is_compression_mode;
     bool use_logscale;
     int skip_header_size;
+    std::string compressor;
 
     void readThread(size_t threadId, size_t totalReadThreads) {
         assert(dimension.size() == 3);
@@ -117,7 +120,7 @@ template <typename T> class CompressionThreadManager {
         {
             std::lock_guard<std::mutex> lock(readMutex);
             std::cout << "finished all reading, total read time is " << total_read_time
-                        << std::endl;
+                      << std::endl;
             read_done = true;
         }
         worker_can_put.notify_all();
@@ -161,17 +164,49 @@ template <typename T> class CompressionThreadManager {
                         std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
                                        floatBuffer.begin(),
                                        [](double val) { return std::log(val); });
-                        compressedData =
-                            SZ_compress<float>(chunk.conf, floatBuffer.data(), outSize);
+                        if (compressor == "sz3") {
+                            compressedData =
+                                SZ_compress<float>(chunk.conf, floatBuffer.data(), outSize);
+                        } else if (compressor == "zfp") {
+                            compressedData =reinterpret_cast<char*>(
+                                zfp_compression((void*)floatBuffer.data(), ZFP_FLOAT, ZFP_ABS,
+                                                chunk.conf.absErrorBound, 0, 0, chunk.conf.dims[0],
+                                                chunk.conf.dims[1], chunk.conf.dims[2], &outSize));
+                        }
                     } else {
                         std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
                                        chunk.dataBuffer.begin(),
                                        [](T val) { return static_cast<T>(std::log(val)); });
-                        compressedData =
-                            SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                        if(compressor == "sz3") {
+                            compressedData =
+                                SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                        } else if(compressor == "zfp") {
+                            int data_type = ZFP_FLOAT;
+                            if constexpr (std::is_same_v<T, float>) {
+                                data_type = ZFP_FLOAT;
+                            }else if constexpr (std::is_same_v<T, double>) {
+                                data_type = ZFP_DOUBLE;
+                            }
+                            compressedData = reinterpret_cast<char*>(zfp_compression((void*)chunk.dataBuffer.data(), data_type, ZFP_ABS,
+                                                             chunk.conf.absErrorBound, 0, 0, chunk.conf.dims[0],
+                                                             chunk.conf.dims[1], chunk.conf.dims[2], &outSize));
+                        }
                     }
                 } else {
-                    compressedData = SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                    if(compressor == "sz3") {
+                        compressedData =
+                            SZ_compress<T>(chunk.conf, chunk.dataBuffer.data(), outSize);
+                    } else if(compressor=="zfp") {
+                        int data_type = ZFP_FLOAT;
+                        if constexpr (std::is_same_v<T, float>) {
+                            data_type = ZFP_FLOAT;
+                        }else if constexpr (std::is_same_v<T, double>) {
+                            data_type = ZFP_DOUBLE;
+                        }
+                        compressedData = reinterpret_cast<char*>(zfp_compression((void*)chunk.dataBuffer.data(), data_type, ZFP_ABS,
+                                                         chunk.conf.absErrorBound, 0, 0, chunk.conf.dims[0],
+                                                         chunk.conf.dims[1], chunk.conf.dims[2], &outSize));
+                    }
                 }
                 chunk.cpdataBuffer = std::vector<char>(outSize);
                 std::copy(compressedData, compressedData + outSize, chunk.cpdataBuffer.begin());
@@ -184,24 +219,59 @@ template <typename T> class CompressionThreadManager {
                 chunk.dataBuffer = std::vector<T>(chunk.conf.num);
                 if (use_logscale) {
                     if constexpr (std::is_integral_v<T>) {
-                        auto* decData = SZ_decompress<float>(chunk.conf, chunk.cpdataBuffer.data(),
-                                                             chunk.cpdataBuffer.size());
+                        float *decData;
+                        if(compressor == "sz3") {
+                            decData = SZ_decompress<float>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                           chunk.cpdataBuffer.size());
+                        } else if(compressor == "zfp") {
+                            decData = reinterpret_cast<float*>(zfp_decompression(ZFP_FLOAT, ZFP_ABS,reinterpret_cast<unsigned char*>(chunk.cpdataBuffer.data()), chunk.cpdataBuffer.size(),
+                                                         0, 0, chunk.conf.dims[0],
+                                                              chunk.conf.dims[1], chunk.conf.dims[2]));
+                        }
                         std::vector<float> floatDPBuffer(chunk.conf.num);
                         std::copy_n(decData, chunk.conf.num, floatDPBuffer.begin());
                         delete[] decData;
-                        std::transform(floatDPBuffer.begin(), floatDPBuffer.end(), chunk.dataBuffer.begin(),
+                        std::transform(floatDPBuffer.begin(), floatDPBuffer.end(),
+                                       chunk.dataBuffer.begin(),
                                        [](float val) { return static_cast<T>(std::exp(val)); });
                     } else {
-                        auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
-                                                         chunk.cpdataBuffer.size());
+                        T* decData;
+                        if(compressor == "sz3") {
+                            decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                       chunk.cpdataBuffer.size());
+                        } else if(compressor == "zfp") {
+                            int data_type = ZFP_FLOAT;
+                            if constexpr (std::is_same_v<T, float>) {
+                                data_type = ZFP_FLOAT;
+                            }else if constexpr (std::is_same_v<T, double>) {
+                                data_type = ZFP_DOUBLE;
+                            }
+                            decData = reinterpret_cast<T*>(zfp_decompression(data_type, ZFP_ABS,reinterpret_cast<unsigned char*>(chunk.cpdataBuffer.data()), chunk.cpdataBuffer.size(),
+                                                        0, 0, chunk.conf.dims[0],
+                                                        chunk.conf.dims[1], chunk.conf.dims[2]));
+                        }
                         std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
                         delete[] decData;
-                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(), chunk.dataBuffer.begin(),
+                        std::transform(chunk.dataBuffer.begin(), chunk.dataBuffer.end(),
+                                       chunk.dataBuffer.begin(),
                                        [](T val) { return static_cast<T>(std::exp(val)); });
                     }
                 } else {
-                    auto* decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
-                                                     chunk.cpdataBuffer.size());
+                    T *decData;
+                    if(compressor == "sz3") {
+                        decData = SZ_decompress<T>(chunk.conf, chunk.cpdataBuffer.data(),
+                                                         chunk.cpdataBuffer.size());
+                    } else if(compressor == "zfp") {
+                        int data_type = ZFP_FLOAT;
+                        if constexpr (std::is_same_v<T, float>) {
+                            data_type = ZFP_FLOAT;
+                        }else if constexpr (std::is_same_v<T, double>) {
+                            data_type = ZFP_DOUBLE;
+                        }
+                        decData = reinterpret_cast<T*>(zfp_decompression(data_type, ZFP_ABS,reinterpret_cast<unsigned char*>(chunk.cpdataBuffer.data()), chunk.cpdataBuffer.size(),
+                                                    0, 0, chunk.conf.dims[0],
+                                                    chunk.conf.dims[1], chunk.conf.dims[2]));
+                    }
                     std::copy(decData, decData + chunk.conf.num, chunk.dataBuffer.begin());
                     delete[] decData;
                 }
@@ -262,13 +332,15 @@ template <typename T> class CompressionThreadManager {
                             << std::endl;
 
                 debugStream << is_compression_mode << "[writer] first 10 values in chunk ["
-                            << chunk.sequenceNumber << "]" << ": ";
+                            << chunk.sequenceNumber << "]"
+                            << ": ";
                 for (int _index_test = 0; _index_test < 10; _index_test++) {
                     debugStream << chunk.dataBuffer[_index_test] << " ";
                 }
                 debugStream << std::endl;
                 debugStream << is_compression_mode << "[writer] last 10 values in chunk ["
-                            << chunk.sequenceNumber << "]" << ": ";
+                            << chunk.sequenceNumber << "]"
+                            << ": ";
                 for (int _index_test = chunk.dataBuffer.size() - 10;
                      _index_test < chunk.dataBuffer.size(); _index_test++) {
                     debugStream << chunk.dataBuffer[_index_test] << " ";
@@ -296,7 +368,7 @@ template <typename T> class CompressionThreadManager {
     CompressionThreadManager(std::string input_file, std::string output_file,
                              std::vector<size_t> dimension, double eb, size_t depth,
                              size_t num_of_threads, size_t num_of_readers, bool is_compression,
-                             bool use_logscale, int skip_header_size)
+                             bool use_logscale, int skip_header_size, const std::string& compressor)
         : input_file(std::move(input_file)), output_file(std::move(output_file)),
           dimension(std::move(dimension)), eb(eb), depth(depth), num_of_threads(num_of_threads),
           num_of_readers(num_of_readers) {
@@ -308,6 +380,7 @@ template <typename T> class CompressionThreadManager {
         is_compression_mode = is_compression;
         this->use_logscale = use_logscale;
         this->skip_header_size = skip_header_size;
+        this->compressor = compressor;
     }
 
     void startThreads() {

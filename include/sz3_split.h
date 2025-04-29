@@ -23,7 +23,7 @@ void safe_call_MPI_finalize() {
 void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_file,
                           std::string& output_file, std::vector<size_t>& data_dimension, float& eb,
                           std::string& data_type, std::string& mode, size_t& depth, bool& use_mpi,
-                          bool& use_logscale, int& skip_header_size) {
+                          bool& use_logscale, int& skip_header_size, std::string& compressor) {
     optind = 1;
     const char* opt_index = "ht:i:d:e:o:";
     const int DATA_TYPE = 1008;
@@ -32,6 +32,7 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
     const int MPI_MODE = 1011;
     const int LOG_SCALE = 1012;
     const int KEEP_HEADER = 1013;
+    const int COMPRESSOR = 1014;
     struct option opts[] = {{"threads", required_argument, nullptr, 't'},
                             {"help", no_argument, nullptr, 'h'},
                             {"input", required_argument, nullptr, 'i'},
@@ -43,7 +44,8 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
                             {"depth", required_argument, nullptr, DEPTH},
                             {"mpi", no_argument, nullptr, MPI_MODE},
                             {"logscale", no_argument, nullptr, LOG_SCALE},
-                            {"header_size", required_argument, nullptr, KEEP_HEADER}};
+                            {"header_size", required_argument, nullptr, KEEP_HEADER},
+                            {"compressor", required_argument, nullptr, COMPRESSOR}};
 
     depth = 1;
     threads = 1;
@@ -67,7 +69,9 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
         "          --logscale             use logscale to preprocess each part of the data and "
         "recover the decompressed data with logscale\n"
         "          --header_size    INT   keep a constant header in the compressed file for "
-        "metadata; the compressor will skip a user defined constant.\n";
+        "metadata; the compressor will skip a user defined constant.\n"
+        "          --compressor     STR   either sz3 or zfp, for prediction-based compression or "
+        "transform-based compression.\n";
     int c;
     while ((c = getopt_long(argc, argv, opt_index, opts, nullptr)) != -1) {
         switch (c) {
@@ -110,6 +114,9 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
             break;
         case KEEP_HEADER:
             skip_header_size = std::stoi(optarg);
+            break;
+        case COMPRESSOR:
+            compressor = optarg;
             break;
         default:
             std::cerr << "Usage: compress/decompress/test\n";
@@ -295,8 +302,9 @@ int compress(int argc, char** argv) {
     int skip_header_size = 0;
     std::string mode;
     size_t depth;
+    std::string compressor = "sz3";
     parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, data_type,
-                         mode, depth, use_mpi, use_logscale, skip_header_size);
+                         mode, depth, use_mpi, use_logscale, skip_header_size, compressor);
     if (threads <= 1 || dimension.size() < 3) {
         if (data_type == "float64") {
             return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth,
@@ -305,34 +313,32 @@ int compress(int argc, char** argv) {
             return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth,
                                         use_logscale, skip_header_size);
         } else if (data_type == "uint16") {
-            return compress_impl<uint16_t>(input_file, output_file, dimension,
-                                           eb, mode, depth, use_logscale,
-                                           skip_header_size);
+            return compress_impl<uint16_t>(input_file, output_file, dimension, eb, mode, depth,
+                                           use_logscale, skip_header_size);
         } else if (data_type == "uint32") {
-            return compress_impl<uint32_t>(input_file, output_file, dimension,
-                                           eb, mode, depth, use_logscale,
-                                           skip_header_size);
+            return compress_impl<uint32_t>(input_file, output_file, dimension, eb, mode, depth,
+                                           use_logscale, skip_header_size);
         }
     } else if (!use_mpi) { // multi-threading for layer-by-layer compression
         if (data_type == "float64") {
             CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth,
                                                      threads, 1, true, use_logscale,
-                                                     skip_header_size);
+                                                     skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "float32") {
             CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth,
                                                     threads, 1, true, use_logscale,
-                                                    skip_header_size);
+                                                    skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "uint16") {
-            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension,
-                                                       eb, depth, threads, 1,
-                                                       true, use_logscale, skip_header_size);
+            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, true, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "uint32") {
-            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension,
-                                                       eb, depth, threads, 1,
-                                                       true, use_logscale, skip_header_size);
+            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, true, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         }
     } else { // use mpi to compress
@@ -346,14 +352,12 @@ int compress(int argc, char** argv) {
                                                  true, threads, use_logscale, skip_header_size);
             manager.startMPI();
         } else if (data_type == "uint16") {
-            CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension,
-                                                    eb, depth, true, threads,
-                                                    use_logscale, skip_header_size);
+            CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    true, threads, use_logscale, skip_header_size);
             manager.startMPI();
         } else if (data_type == "uint32") {
-            CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension,
-                                                    eb, depth, true, threads,
-                                                    use_logscale, skip_header_size);
+            CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    true, threads, use_logscale, skip_header_size);
             manager.startMPI();
         }
     }
@@ -508,8 +512,9 @@ int decompress(int argc, char** argv) {
     int skip_header_size = 0;
     std::string mode;
     size_t depth;
+    std::string compressor;
     parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, data_type,
-                         mode, depth, use_mpi, use_logscale, skip_header_size);
+                         mode, depth, use_mpi, use_logscale, skip_header_size, compressor);
     if (threads <= 1 || dimension.size() < 3) {
         if (data_type == "float64") {
             return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth,
@@ -519,31 +524,31 @@ int decompress(int argc, char** argv) {
                                           use_logscale, skip_header_size);
         } else if (data_type == "uint16") {
             return decompress_impl<uint16_t>(input_file, output_file, dimension, eb, mode, depth,
-                                          use_logscale, skip_header_size);
+                                             use_logscale, skip_header_size);
         } else if (data_type == "uint32") {
             return decompress_impl<uint32_t>(input_file, output_file, dimension, eb, mode, depth,
-                                          use_logscale, skip_header_size);
+                                             use_logscale, skip_header_size);
         }
     } else if (!use_mpi) {
         if (data_type == "float64") {
             CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth,
                                                      threads, 1, false, use_logscale,
-                                                     skip_header_size);
+                                                     skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "float32") {
             CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth,
                                                     threads, 1, false, use_logscale,
-                                                    skip_header_size);
+                                                    skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "uint16") {
-            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    threads, 1, false, use_logscale,
-                                                    skip_header_size);
+            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, false, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         } else if (data_type == "uint32") {
-            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    threads, 1, false, use_logscale,
-                                                    skip_header_size);
+            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, false, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         }
     } else { // use MPI
@@ -558,11 +563,11 @@ int decompress(int argc, char** argv) {
             manager.startMPI();
         } else if (data_type == "uint16") {
             CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
-                                              false, threads, use_logscale, skip_header_size);
+                                                    false, threads, use_logscale, skip_header_size);
             manager.startMPI();
         } else if (data_type == "uint32") {
             CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
-                                              false, threads, use_logscale, skip_header_size);
+                                                    false, threads, use_logscale, skip_header_size);
             manager.startMPI();
         }
     }
