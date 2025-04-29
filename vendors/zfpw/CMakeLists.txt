@@ -1,7 +1,7 @@
 
 add_subdirectory(zfp)
 
-add_library(zfpw STATIC
+add_library(zfpw
     src/zfp_rw.c src/zfp_toolkit.c src/zfpw.c
         include/zfp_rw.h include/zfp_toolkit.h include/zfpw.h
 )
