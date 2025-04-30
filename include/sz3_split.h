@@ -345,19 +345,19 @@ int compress(int argc, char** argv) {
         debugStream << "start using MPI to compress data" << std::endl;
         if (data_type == "float64") {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  true, threads, use_logscale, skip_header_size);
+                                                  true, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "float32") {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 true, threads, use_logscale, skip_header_size);
+                                                 true, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "uint16") {
             CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    true, threads, use_logscale, skip_header_size);
+                                                    true, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "uint32") {
             CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    true, threads, use_logscale, skip_header_size);
+                                                    true, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         }
     }
@@ -555,19 +555,19 @@ int decompress(int argc, char** argv) {
         std::cout << "start using MPI to decompress data" << std::endl;
         if (data_type == "float64") {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  false, threads, use_logscale, skip_header_size);
+                                                  false, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "float32") {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 false, threads, use_logscale, skip_header_size);
+                                                 false, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "uint16") {
             CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    false, threads, use_logscale, skip_header_size);
+                                                    false, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         } else if (data_type == "uint32") {
             CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
-                                                    false, threads, use_logscale, skip_header_size);
+                                                    false, threads, use_logscale, skip_header_size, compressor);
             manager.startMPI();
         }
     }
