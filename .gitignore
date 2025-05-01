@@ -15,3 +15,5 @@ __pycache__/
 python-examples/*.png
 */*.sz3
 */*.sz3.dp
+**/.DS_Store
+bebop/

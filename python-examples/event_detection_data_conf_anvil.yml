@@ -1,0 +1,31 @@
+global:
+  metrics_output_folder: "/anvil/projects/x-cis220161/datasets/aps/apr29-metrics"
+  large_file_output_folder: "/anvil/projects/x-cis220161/datasets/aps/apr29-logscale-largefiles"
+
+datasets:
+  - name: "weijian_event_detecion"
+    dimension: [2048, 2048, 1440]
+    fileNames: ["test.edf.ge5"]
+    ext: ".ge5"
+    folder: /anvil/projects/x-cis220161/datasets/aps/
+    # ebs: [1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 100]
+    # ebs: [0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0001]
+    ebs: [0.01]
+    depths: [4, 8, 16, 32, 64]
+    data_type: "uint16"
+
+compressors:
+  - name: "sz3-split"
+    ext: ".sz3split"
+    executable: "/home/x-yliu4/aps/SZ3/build/tools/sz3-split/sz3_split"
+    use_mpi: true
+    n_threads: [16, 32, 64, 96, 128]
+    compress_params: ["compress", "-i", "$fileName", "-o", "$compressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale", "--compressor sz3"]
+    decompress_params: ["decompress", "-i", "$compressedFileName", "-o", "$decompressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale", "--compressor sz3"]
+  - name: "zfp-split"
+    ext: ".zfpsplit"
+    executable: "/home/x-yliu4/aps/SZ3/build/tools/sz3-split/sz3_split"
+    use_mpi: true
+    n_threads: [16, 32, 64, 96, 128]
+    compress_params: ["compress", "-i", "$fileName", "-o", "$compressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale", "--compressor zfp"]
+    decompress_params: ["decompress", "-i", "$compressedFileName", "-o", "$decompressedFileName", "--mode layer", "-e", "$eb", "--header_size 8396800", "--logscale", "--compressor zfp"]

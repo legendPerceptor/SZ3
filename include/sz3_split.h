@@ -22,31 +22,35 @@ void safe_call_MPI_finalize() {
 
 void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_file,
                           std::string& output_file, std::vector<size_t>& data_dimension, float& eb,
-                          bool& is_float64, std::string& mode, size_t& depth, bool& use_mpi,
-                          bool& use_logscale) {
+                          std::string& data_type, std::string& mode, size_t& depth, bool& use_mpi,
+                          bool& use_logscale, int& skip_header_size, std::string& compressor) {
     optind = 1;
     const char* opt_index = "ht:i:d:e:o:";
-    const int FLOAT_64 = 1008;
+    const int DATA_TYPE = 1008;
     const int MODE = 1009;
     const int DEPTH = 1010;
     const int MPI_MODE = 1011;
     const int LOG_SCALE = 1012;
+    const int KEEP_HEADER = 1013;
+    const int COMPRESSOR = 1014;
     struct option opts[] = {{"threads", required_argument, nullptr, 't'},
                             {"help", no_argument, nullptr, 'h'},
                             {"input", required_argument, nullptr, 'i'},
                             {"output", required_argument, nullptr, 'o'},
                             {"errorbound", required_argument, nullptr, 'e'},
                             {"dimension", required_argument, nullptr, 'd'},
-                            {"float64", no_argument, nullptr, FLOAT_64},
+                            {"data_type", required_argument, nullptr, DATA_TYPE},
                             {"mode", required_argument, nullptr, MODE},
                             {"depth", required_argument, nullptr, DEPTH},
                             {"mpi", no_argument, nullptr, MPI_MODE},
-                            {"logscale", no_argument, nullptr, LOG_SCALE}};
+                            {"logscale", no_argument, nullptr, LOG_SCALE},
+                            {"header_size", required_argument, nullptr, KEEP_HEADER},
+                            {"compressor", required_argument, nullptr, COMPRESSOR}};
 
     depth = 1;
     threads = 1;
     use_mpi = false;
-    is_float64 = false;
+    data_type = "float32";
     std::string compress_helper_info =
         "Usage: sz3_split (de)compress [options]\n"
         "options:  --threads/-t     INT   number of threads, default is 1, for MPI mode, this "
@@ -56,15 +60,18 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
         "          --help/-h              print this help information\n"
         "          --dimension/-d   STR   the data dimension of the file, e.g., 256 256 512\n"
         "          --errorbound/-e  FLOAT the error bound to use in compression\n"
-        "          --float64              the default is float32 for each datapoint, this param "
-        "changes it to float64\n"
+        "          --data_type      STR   the default is float32 for each datapoint, this param "
+        "can also be set to int16, int32, uint16, uint32, float64.\n"
         "          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' "
         "for direct compression\n"
         "          --depth          INT   select the layer depth in layer-by-layer compression\n"
         "          --mpi                  use MPI to run multiple processes\n"
         "          --logscale             use logscale to preprocess each part of the data and "
-        "recover the decompressed data with logscale\n";
-    is_float64 = false; // default is float32
+        "recover the decompressed data with logscale\n"
+        "          --header_size    INT   keep a constant header in the compressed file for "
+        "metadata; the compressor will skip a user defined constant.\n"
+        "          --compressor     STR   either sz3 or zfp, for prediction-based compression or "
+        "transform-based compression.\n";
     int c;
     while ((c = getopt_long(argc, argv, opt_index, opts, nullptr)) != -1) {
         switch (c) {
@@ -90,8 +97,8 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
         case 'o':
             output_file = optarg;
             break;
-        case FLOAT_64:
-            is_float64 = true;
+        case DATA_TYPE:
+            data_type = optarg;
             break;
         case MODE:
             mode = optarg;
@@ -104,6 +111,12 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
             break;
         case LOG_SCALE:
             use_logscale = true;
+            break;
+        case KEEP_HEADER:
+            skip_header_size = std::stoi(optarg);
+            break;
+        case COMPRESSOR:
+            compressor = optarg;
             break;
         default:
             std::cerr << "Usage: compress/decompress/test\n";
@@ -125,8 +138,8 @@ void parseCompressOptions(int argc, char** argv, int& threads, std::string& raw_
 
 template <typename TYPE>
 int compress_impl(const std::string& input_file, const std::string& output_file,
-                  std::vector<size_t> dimension, TYPE eb, const std::string& mode, size_t depth,
-                  bool use_logscale) {
+                  std::vector<size_t> dimension, double eb, const std::string& mode, size_t depth,
+                  bool use_logscale, int skip_header_size, const std::string& compressor) {
     SZ3::Config conf = defaultConfig();
 
     if (dimension.size() == 3 && mode == "layer") {
@@ -148,6 +161,11 @@ int compress_impl(const std::string& input_file, const std::string& output_file,
         if (!fout.is_open()) {
             std::cerr << "Error opening the file: " << output_file.c_str() << std::endl;
             return -1;
+        }
+        if (skip_header_size > 0) {
+            std::vector<char> header_buffer(skip_header_size);
+            fin.read(header_buffer.data(), skip_header_size);
+            fout.write(header_buffer.data(), skip_header_size);
         }
         SZ3::Timer total_timer(true);
         SZ3::Timer temp(false);
@@ -172,11 +190,51 @@ int compress_impl(const std::string& input_file, const std::string& output_file,
             //                read_start += chunk_size;
             size_t outSize;
             SZ3::Timer timer(true);
+            char* compressedData;
             if (use_logscale) {
-                std::transform(buffer.begin(), buffer.end(), buffer.begin(),
-                               [](double val) { return std::log(val); });
+                if constexpr (std::is_integral_v<TYPE>) {
+                    std::vector<float> floatBuffer(buffer.size());
+                    std::transform(buffer.begin(), buffer.end(), floatBuffer.begin(),
+                                   [](TYPE val) { return std::log(val); });
+                    if (compressor == "sz3") {
+                        compressedData = SZ_compress<float>(conf, floatBuffer.data(), outSize);
+                    } else if (compressor == "zfp") {
+                        compressedData = reinterpret_cast<char*>(zfp_compression(
+                            (void*)floatBuffer.data(), ZFP_FLOAT, ZFP_ABS, conf.absErrorBound, 0, 0,
+                            conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+                    }
+                } else {
+                    std::transform(buffer.begin(), buffer.end(), buffer.begin(),
+                                   [](TYPE val) { return std::log(val); });
+                    if (compressor == "sz3") {
+                        compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+                    } else if (compressor == "zfp") {
+                        int data_type = ZFP_FLOAT;
+                        if constexpr (std::is_same_v<TYPE, float>) {
+                            data_type = ZFP_FLOAT;
+                        } else if constexpr (std::is_same_v<TYPE, double>) {
+                            data_type = ZFP_DOUBLE;
+                        }
+                        compressedData = reinterpret_cast<char*>(zfp_compression(
+                            (void*)buffer.data(), data_type, ZFP_ABS, conf.absErrorBound, 0, 0,
+                            conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+                    }
+                }
+            } else {
+                if (compressor == "sz3") {
+                    compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+                } else if (compressor == "zfp") {
+                    int data_type = ZFP_FLOAT;
+                    if constexpr (std::is_same_v<TYPE, float>) {
+                        data_type = ZFP_FLOAT;
+                    } else if constexpr (std::is_same_v<TYPE, double>) {
+                        data_type = ZFP_DOUBLE;
+                    }
+                    compressedData = reinterpret_cast<char*>(zfp_compression(
+                        (void*)buffer.data(), data_type, ZFP_ABS, conf.absErrorBound, 0, 0,
+                        conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+                }
             }
-            char* compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
             double compress_time = timer.stop();
             total_compress_time += compress_time;
             auto compresed_chunk_size = static_cast<int64_t>(outSize);
@@ -211,17 +269,79 @@ int compress_impl(const std::string& input_file, const std::string& output_file,
         conf.setDims(dimension.rbegin(), dimension.rend());
         conf.absErrorBound = eb;
         std::vector<TYPE> buffer(conf.num);
-        SZ3::readfile<TYPE>(input_file.c_str(), conf.num, buffer.data());
+        std::ifstream fin(input_file.c_str(), std::ios::binary);
+        if (!fin) {
+            std::cerr << " Error, Couldn't find the file: " << input_file << "\n";
+            throw std::invalid_argument("Couldn't find the file");
+        }
+        std::ofstream fout(output_file.c_str(), std::ios::binary);
+        if (skip_header_size > 0) {
+            std::vector<char> header_buffer(skip_header_size);
+            fin.read(header_buffer.data(), skip_header_size);
+            fout.write(header_buffer.data(), skip_header_size);
+        }
+        fin.seekg(0, std::ios::end);
+        if ((static_cast<std::streamoff>(fin.tellg()) - skip_header_size) / sizeof(TYPE) !=
+            conf.num) {
+            fprintf(stderr, "File size is not equal to the input setting\n");
+            throw std::invalid_argument("File size is not equal to the input setting");
+        }
+        fin.seekg(skip_header_size, std::ios::beg);
+        fin.read(reinterpret_cast<char*>(buffer.data()), conf.num * sizeof(TYPE));
+        fin.close();
+        // SZ3::readfile<TYPE>(input_file.c_str(), conf.num, buffer.data());
         size_t outSize;
         SZ3::Timer timer(true);
+        char* compressedData;
+        double compress_time;
         if (use_logscale) {
-            std::transform(buffer.begin(), buffer.end(), buffer.begin(),
-                           [](double val) { return std::log(val); });
+            if constexpr (std::is_integral_v<TYPE>) {
+                std::vector<float> floatBuffer(buffer.size());
+                std::transform(buffer.begin(), buffer.end(), floatBuffer.begin(),
+                               [](TYPE val) { return std::log(val); });
+                if (compressor == "sz3") {
+                    compressedData = SZ_compress<float>(conf, floatBuffer.data(), outSize);
+                } else if (compressor == "zfp") {
+                    compressedData = reinterpret_cast<char*>(zfp_compression(
+                        (void*)floatBuffer.data(), ZFP_FLOAT, ZFP_ABS, conf.absErrorBound, 0, 0,
+                        conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+                }
+            } else {
+                std::transform(buffer.begin(), buffer.end(), buffer.begin(),
+                               [](TYPE val) { return std::log(val); });
+                if (compressor == "sz3") {
+                    compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+                } else if (compressor == "zfp") {
+                    int data_type = ZFP_FLOAT;
+                    if constexpr (std::is_same_v<TYPE, float>) {
+                        data_type = ZFP_FLOAT;
+                    } else if constexpr (std::is_same_v<TYPE, double>) {
+                        data_type = ZFP_DOUBLE;
+                    }
+                    compressedData = reinterpret_cast<char*>(zfp_compression(
+                        (void*)buffer.data(), data_type, ZFP_ABS, conf.absErrorBound, 0, 0,
+                        conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+                }
+            }
+        } else {
+            if (compressor == "sz3") {
+                compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
+            } else if (compressor == "zfp") {
+                int data_type = ZFP_FLOAT;
+                if constexpr (std::is_same_v<TYPE, float>) {
+                    data_type = ZFP_FLOAT;
+                } else if constexpr (std::is_same_v<TYPE, double>) {
+                    data_type = ZFP_DOUBLE;
+                }
+                compressedData = reinterpret_cast<char*>(
+                    zfp_compression((void*)buffer.data(), data_type, ZFP_ABS, conf.absErrorBound, 0,
+                                    0, conf.dims[0], conf.dims[1], conf.dims[2], &outSize));
+            }
         }
-        char* compressedData = SZ_compress<TYPE>(conf, buffer.data(), outSize);
-        double compress_time = timer.stop();
+        compress_time = timer.stop();
         std::cout << "Compression completed! Time elasped: " << compress_time << std::endl;
-        SZ3::writefile(output_file.c_str(), compressedData, outSize);
+        fout.write(compressedData, outSize * sizeof(char));
+        // SZ3::writefile(output_file.c_str(), compressedData, outSize);
         std::cout << "compression ratio = " << std::fixed << std::setprecision(2)
                   << (double)conf.num * 1.0 * sizeof(TYPE) / (double)outSize << std::endl;
         std::cout << "compression time = " << compress_time << std::endl;
@@ -236,40 +356,72 @@ int compress(int argc, char** argv) {
     std::vector<size_t> dimension;
     std::string input_file, output_file;
     float eb;
-    bool isfloat64 = false;
+    std::string data_type = "float32";
     bool use_mpi = false;
     bool use_logscale = false;
+    int skip_header_size = 0;
     std::string mode;
     size_t depth;
-    parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64,
-                         mode, depth, use_mpi, use_logscale);
+    std::string compressor = "sz3";
+    parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, data_type,
+                         mode, depth, use_mpi, use_logscale, skip_header_size, compressor);
     if (threads <= 1 || dimension.size() < 3) {
-        if (isfloat64) {
+        if (data_type == "float64") {
             return compress_impl<double>(input_file, output_file, dimension, eb, mode, depth,
-                                         use_logscale);
-        } else {
+                                         use_logscale, skip_header_size, compressor);
+        } else if (data_type == "float32") {
             return compress_impl<float>(input_file, output_file, dimension, eb, mode, depth,
-                                        use_logscale);
+                                        use_logscale, skip_header_size, compressor);
+        } else if (data_type == "uint16") {
+            return compress_impl<uint16_t>(input_file, output_file, dimension, eb, mode, depth,
+                                           use_logscale, skip_header_size, compressor);
+        } else if (data_type == "uint32") {
+            return compress_impl<uint32_t>(input_file, output_file, dimension, eb, mode, depth,
+                                           use_logscale, skip_header_size, compressor);
         }
     } else if (!use_mpi) { // multi-threading for layer-by-layer compression
-        if (isfloat64) {
+        if (data_type == "float64") {
             CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                     threads, 1, true, use_logscale);
+                                                     threads, 1, true, use_logscale,
+                                                     skip_header_size, compressor);
             manager.startThreads();
-        } else {
+        } else if (data_type == "float32") {
             CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                    threads, 1, true, use_logscale);
+                                                    threads, 1, true, use_logscale,
+                                                    skip_header_size, compressor);
+            manager.startThreads();
+        } else if (data_type == "uint16") {
+            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, true, use_logscale,
+                                                       skip_header_size, compressor);
+            manager.startThreads();
+        } else if (data_type == "uint32") {
+            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, true, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         }
     } else { // use mpi to compress
         debugStream << "start using MPI to compress data" << std::endl;
-        if (isfloat64) {
+        if (data_type == "float64") {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  true, threads, use_logscale);
+                                                  true, threads, use_logscale, skip_header_size,
+                                                  compressor);
             manager.startMPI();
-        } else {
+        } else if (data_type == "float32") {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 true, threads, use_logscale);
+                                                 true, threads, use_logscale, skip_header_size,
+                                                 compressor);
+            manager.startMPI();
+        } else if (data_type == "uint16") {
+            CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    true, threads, use_logscale, skip_header_size,
+                                                    compressor);
+            manager.startMPI();
+        } else if (data_type == "uint32") {
+            CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    true, threads, use_logscale, skip_header_size,
+                                                    compressor);
             manager.startMPI();
         }
     }
@@ -278,7 +430,8 @@ int compress(int argc, char** argv) {
 
 template <typename TYPE>
 int decompress_impl(const std::string& input_file, const std::string& output_file,
-                    std::vector<size_t> dimension, TYPE eb, const std::string& mode, size_t depth, bool use_logscale) {
+                    std::vector<size_t> dimension, double eb, const std::string& mode, size_t depth,
+                    bool use_logscale, int skip_header_size, const std::string& compressor) {
     SZ3::Config conf = defaultConfig(); // 300 is the fastest dimension
     if (dimension.size() == 3 && mode == "layer") {
         if (depth == 1) {
@@ -296,6 +449,11 @@ int decompress_impl(const std::string& input_file, const std::string& output_fil
         int64_t compressed_chunk_size;
         double total_read_time = 0, total_write_time = 0, total_decompress_time = 0;
         std::ofstream fout(output_file.c_str(), std::ios::binary | std::ios::out);
+        if (skip_header_size > 0) {
+            std::vector<char> header_buffer(skip_header_size);
+            fin.read(header_buffer.data(), skip_header_size);
+            fout.write(header_buffer.data(), skip_header_size);
+        }
         SZ3::Timer total_timer(true);
         SZ3::Timer timer(false);
         size_t num_iterations = dimension[2] / depth;
@@ -314,19 +472,65 @@ int decompress_impl(const std::string& input_file, const std::string& output_fil
             fin.read(buffer.data(), compressed_chunk_size);
             total_read_time += timer.stop();
             timer.start();
-            auto* decData = SZ_decompress<TYPE>(conf, buffer.data(), compressed_chunk_size);
+            std::vector<TYPE> DPbuffer(conf.num);
+            if (use_logscale) {
+                if constexpr (std::is_integral_v<TYPE>) {
+                    float* decData;
+                    if (compressor == "sz3") {
+                        decData = SZ_decompress<float>(conf, buffer.data(), compressed_chunk_size);
+                    } else if (compressor == "zfp") {
+                        decData = reinterpret_cast<float*>(zfp_decompression(
+                            ZFP_FLOAT, ZFP_ABS, reinterpret_cast<unsigned char*>(buffer.data()),
+                            compressed_chunk_size, 0, 0, conf.dims[0], conf.dims[1], conf.dims[2]));
+                    }
+                    std::vector<float> floatDPBuffer(conf.num);
+                    std::copy(decData, decData + conf.num, floatDPBuffer.begin());
+                    delete[] decData;
+                    std::transform(floatDPBuffer.begin(), floatDPBuffer.end(), DPbuffer.begin(),
+                                   [](float val) { return static_cast<TYPE>(std::exp(val)); });
+                } else {
+                    TYPE* decData;
+                    if (compressor == "sz3") {
+                        decData = SZ_decompress<TYPE>(conf, buffer.data(), compressed_chunk_size);
+                    } else if (compressor == "zfp") {
+                        int data_type = ZFP_FLOAT;
+                        if constexpr (std::is_same_v<TYPE, float>) {
+                            data_type = ZFP_FLOAT;
+                        } else if constexpr (std::is_same_v<TYPE, double>) {
+                            data_type = ZFP_DOUBLE;
+                        }
+                        decData = reinterpret_cast<TYPE*>(zfp_decompression(
+                            data_type, ZFP_ABS, reinterpret_cast<unsigned char*>(buffer.data()),
+                            compressed_chunk_size, 0, 0, conf.dims[0], conf.dims[1], conf.dims[2]));
+                    }
+                    std::copy(decData, decData + conf.num, DPbuffer.begin());
+                    delete[] decData;
+                    std::transform(DPbuffer.begin(), DPbuffer.end(), DPbuffer.begin(),
+                                   [](TYPE val) { return static_cast<TYPE>(std::exp(val)); });
+                }
+            } else {
+                TYPE* decData;
+                if (compressor == "sz3") {
+                    decData = SZ_decompress<TYPE>(conf, buffer.data(), compressed_chunk_size);
+                } else if (compressor == "zfp") {
+                    int data_type = ZFP_FLOAT;
+                    if constexpr (std::is_same_v<TYPE, float>) {
+                        data_type = ZFP_FLOAT;
+                    } else if constexpr (std::is_same_v<TYPE, double>) {
+                        data_type = ZFP_DOUBLE;
+                    }
+                    decData = reinterpret_cast<TYPE*>(zfp_decompression(
+                        data_type, ZFP_ABS, reinterpret_cast<unsigned char*>(buffer.data()),
+                        compressed_chunk_size, 0, 0, conf.dims[0], conf.dims[1], conf.dims[2]));
+                }
+                std::copy(decData, decData + conf.num, DPbuffer.begin());
+                delete[] decData;
+            }
             double decompress_time = timer.stop();
             total_decompress_time += decompress_time;
             timer.start();
-            std::vector<TYPE> DPbuffer(conf.num);
-            std::copy(decData, decData + conf.num, DPbuffer.begin());
-            if (use_logscale) {
-                std::transform(DPbuffer.begin(), DPbuffer.end(),
-                               DPbuffer.begin(),
-                               [](double val) { return std::exp(val); });
-            }
             fout.write(reinterpret_cast<const char*>(DPbuffer.data()), conf.num * sizeof(TYPE));
-            delete[] decData;
+
             total_write_time += timer.stop();
             debugStream << "Chunk " << i
                         << " compression completed! Time elasped: " << decompress_time
@@ -353,17 +557,76 @@ int decompress_impl(const std::string& input_file, const std::string& output_fil
         auto cmpData = SZ3::readfile<char>(input_file.c_str(), cmpSize);
 
         SZ3::Timer timer(true);
-        auto* decData = SZ_decompress<TYPE>(conf, cmpData.get(), cmpSize);
         std::vector<TYPE> DPbuffer(conf.num);
-        std::copy(decData, decData + conf.num, DPbuffer.begin());
         if (use_logscale) {
-            std::transform(DPbuffer.begin(), DPbuffer.end(),
-                           DPbuffer.begin(),
-                           [](double val) { return std::exp(val); });
+            if constexpr (std::is_integral_v<TYPE>) {
+                float* decData;
+                if (compressor == "sz3") {
+                    decData = SZ_decompress<float>(conf, cmpData.get() + skip_header_size,
+                                                   cmpSize - skip_header_size);
+                } else if (compressor == "zfp") {
+                    decData = reinterpret_cast<float*>(zfp_decompression(
+                        ZFP_FLOAT, ZFP_ABS,
+                        reinterpret_cast<unsigned char*>(cmpData.get() + skip_header_size),
+                        cmpSize - skip_header_size, 0, 0, conf.dims[0], conf.dims[1],
+                        conf.dims[2]));
+                }
+                std::vector<float> floatDPBuffer(conf.num);
+                std::copy_n(decData, conf.num, floatDPBuffer.begin());
+                delete[] decData;
+                std::transform(floatDPBuffer.begin(), floatDPBuffer.end(), DPbuffer.begin(),
+                               [](float val) { return static_cast<TYPE>(std::exp(val)); });
+            } else {
+                TYPE* decData;
+                if (compressor == "sz3") {
+                    decData = SZ_decompress<TYPE>(conf, cmpData.get() + skip_header_size,
+                                                  cmpSize - skip_header_size);
+                } else if (compressor == "zfp") {
+                    int data_type = ZFP_FLOAT;
+                    if constexpr (std::is_same_v<TYPE, float>) {
+                        data_type = ZFP_FLOAT;
+                    } else if constexpr (std::is_same_v<TYPE, double>) {
+                        data_type = ZFP_DOUBLE;
+                    }
+                    decData = reinterpret_cast<TYPE*>(zfp_decompression(
+                        data_type, ZFP_ABS,
+                        reinterpret_cast<unsigned char*>(cmpData.get() + skip_header_size),
+                        cmpSize - skip_header_size, 0, 0, conf.dims[0], conf.dims[1],
+                        conf.dims[2]));
+                }
+                std::copy(decData, decData + conf.num, DPbuffer.begin());
+                delete[] decData;
+                std::transform(DPbuffer.begin(), DPbuffer.end(), DPbuffer.begin(),
+                               [](TYPE val) { return static_cast<TYPE>(std::exp(val)); });
+            }
+        } else {
+            TYPE* decData;
+            if (compressor == "sz3") {
+                decData = SZ_decompress<TYPE>(conf, cmpData.get() + skip_header_size,
+                                              cmpSize - skip_header_size);
+            } else if (compressor == "zfp") {
+                int data_type = ZFP_FLOAT;
+                if constexpr (std::is_same_v<TYPE, float>) {
+                    data_type = ZFP_FLOAT;
+                } else if constexpr (std::is_same_v<TYPE, double>) {
+                    data_type = ZFP_DOUBLE;
+                }
+                decData = reinterpret_cast<TYPE*>(zfp_decompression(
+                    data_type, ZFP_ABS,
+                    reinterpret_cast<unsigned char*>(cmpData.get() + skip_header_size),
+                    cmpSize - skip_header_size, 0, 0, conf.dims[0], conf.dims[1], conf.dims[2]));
+            }
+            std::copy(decData, decData + conf.num, DPbuffer.begin());
+            delete[] decData;
         }
         double decompress_time = timer.stop();
-        SZ3::writefile<TYPE>(output_file.c_str(), DPbuffer.data(), conf.num);
-        delete[] decData;
+        std::ofstream fout(output_file.c_str(), std::ios::binary);
+        if (skip_header_size > 0) {
+            fout.write(cmpData.get(), skip_header_size);
+        }
+        fout.write(reinterpret_cast<const char*>(DPbuffer.data()), conf.num * sizeof(TYPE));
+        fout.close();
+        // SZ3::writefile<TYPE>(output_file.c_str(), DPbuffer.data(), conf.num);
         printf("compression ratio = %f\n",
                (double)conf.num * (double)sizeof(TYPE) * 1.0 / (double)cmpSize);
         printf("decompression time = %f seconds.\n", decompress_time);
@@ -377,38 +640,72 @@ int decompress(int argc, char** argv) {
     std::vector<size_t> dimension;
     std::string input_file, output_file;
     float eb;
-    bool isfloat64 = false;
+    std::string data_type = "float32";
     bool use_mpi = false;
     bool use_logscale = false;
+    int skip_header_size = 0;
     std::string mode;
     size_t depth;
-    parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, isfloat64,
-                         mode, depth, use_mpi, use_logscale);
+    std::string compressor;
+    parseCompressOptions(argc, argv, threads, input_file, output_file, dimension, eb, data_type,
+                         mode, depth, use_mpi, use_logscale, skip_header_size, compressor);
     if (threads <= 1 || dimension.size() < 3) {
-        if (isfloat64) {
-            return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth, use_logscale);
-        } else {
-            return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth, use_logscale);
+        if (data_type == "float64") {
+            return decompress_impl<double>(input_file, output_file, dimension, eb, mode, depth,
+                                           use_logscale, skip_header_size, compressor);
+        } else if (data_type == "float32") {
+            return decompress_impl<float>(input_file, output_file, dimension, eb, mode, depth,
+                                          use_logscale, skip_header_size, compressor);
+        } else if (data_type == "uint16") {
+            return decompress_impl<uint16_t>(input_file, output_file, dimension, eb, mode, depth,
+                                             use_logscale, skip_header_size, compressor);
+        } else if (data_type == "uint32") {
+            return decompress_impl<uint32_t>(input_file, output_file, dimension, eb, mode, depth,
+                                             use_logscale, skip_header_size, compressor);
         }
     } else if (!use_mpi) {
-        if (isfloat64) {
+        if (data_type == "float64") {
             CompressionThreadManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                     threads, 1, false, use_logscale);
+                                                     threads, 1, false, use_logscale,
+                                                     skip_header_size, compressor);
             manager.startThreads();
-        } else {
+        } else if (data_type == "float32") {
             CompressionThreadManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                    threads, 1, false, use_logscale);
+                                                    threads, 1, false, use_logscale,
+                                                    skip_header_size, compressor);
+            manager.startThreads();
+        } else if (data_type == "uint16") {
+            CompressionThreadManager<uint16_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, false, use_logscale,
+                                                       skip_header_size, compressor);
+            manager.startThreads();
+        } else if (data_type == "uint32") {
+            CompressionThreadManager<uint32_t> manager(input_file, output_file, dimension, eb,
+                                                       depth, threads, 1, false, use_logscale,
+                                                       skip_header_size, compressor);
             manager.startThreads();
         }
     } else { // use MPI
         std::cout << "start using MPI to decompress data" << std::endl;
-        if (isfloat64) {
+        if (data_type == "float64") {
             CompressionMPIManager<double> manager(input_file, output_file, dimension, eb, depth,
-                                                  false, threads, use_logscale);
+                                                  false, threads, use_logscale, skip_header_size,
+                                                  compressor);
             manager.startMPI();
-        } else {
+        } else if (data_type == "float32") {
             CompressionMPIManager<float> manager(input_file, output_file, dimension, eb, depth,
-                                                 false, threads, use_logscale);
+                                                 false, threads, use_logscale, skip_header_size,
+                                                 compressor);
+            manager.startMPI();
+        } else if (data_type == "uint16") {
+            CompressionMPIManager<uint16_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    false, threads, use_logscale, skip_header_size,
+                                                    compressor);
+            manager.startMPI();
+        } else if (data_type == "uint32") {
+            CompressionMPIManager<uint32_t> manager(input_file, output_file, dimension, eb, depth,
+                                                    false, threads, use_logscale, skip_header_size,
+                                                    compressor);
             manager.startMPI();
         }
     }

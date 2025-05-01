@@ -5,6 +5,7 @@ set(SZ3_DATA_VERSION 3.2.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options(-w)
 
@@ -13,8 +14,8 @@ include(CTest)
 
 option(BUILD_SHARED_LIBS "build shared libraries by default" ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_C_COMPILER mpicc)
-set(CMAKE_CXX_COMPILER mpicxx)
+#set(CMAKE_C_COMPILER mpicc)
+#set(CMAKE_CXX_COMPILER mpicxx)
 if (MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 else () #-Wunused-parameter -Wsign-compare
@@ -39,9 +40,10 @@ find_package(MPI REQUIRED)
 
 message("MPI INCLUDE PATH:" ${MPI_INCLUDE_PATH})
 
-add_library(${PROJECT_NAME} INTERFACE
-        include/CompressionMPIManager.h
-        include/split_common.h)
+add_subdirectory(vendors/zfpw)
+
+add_library(${PROJECT_NAME} INTERFACE)
+
 target_include_directories(
         ${PROJECT_NAME} INTERFACE
         ${MPI_INCLUDE_PATH}
@@ -49,6 +51,8 @@ target_include_directories(
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+target_link_libraries(${PROJECT_NAME} INTERFACE zfpw zfp)
+
 target_compile_features(${PROJECT_NAME}
         INTERFACE cxx_std_17
 )
@@ -87,6 +91,8 @@ endif ()
 
 # add_subdirectory(tools/sz3)
 # add_subdirectory(tools/sz3c)
+
+
 
 add_subdirectory(tools/sz3-split)
 add_subdirectory(tools/bindings)
@@ -130,4 +136,4 @@ endif ()
 #         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SZ3
 #         )
 #export sz3 target for external use
-export(TARGETS SZ3 FILE SZ3.cmake)
+export(TARGETS SZ3 zfpw FILE SZ3.cmake)

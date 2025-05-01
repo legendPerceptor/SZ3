@@ -12,16 +12,25 @@ Users can get the help information with `sz3_split compress --help`. We will dem
 
 ```c++
 "Usage: sz3_split (de)compress [options]\n"
-"options:  --threads/-t     INT   number of threads, default is 1, for MPI mode, this specifies the number of I/O processes\n"
+"options:  --threads/-t     INT   number of threads, default is 1, for MPI mode, this "
+"specifies the number of I/O processes\n"
 "          --input/-i       STR   the RAW file/compressed file\n"
 "          --output/-o      STR   the compressed file/decompressed file location\n"
 "          --help/-h              print this help information\n"
 "          --dimension/-d   STR   the data dimension of the file, e.g., 256 256 512\n"
 "          --errorbound/-e  FLOAT the error bound to use in compression\n"
-"          --float64              the default is float32 for each datapoint, this param changes it to float64\n"
-"          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' for direct compression\n"
+"          --data_type      STR   the default is float32 for each datapoint, this param "
+"can also be set to int16, int32, uint16, uint32, float64.\n"
+"          --mode           STR   select 'layer' for layer-by-layer compression, 'direct' "
+"for direct compression\n"
 "          --depth          INT   select the layer depth in layer-by-layer compression\n"
-"          --mpi                  use MPI to run multiple processes";
+"          --mpi                  use MPI to run multiple processes\n"
+"          --logscale             use logscale to preprocess each part of the data and "
+"recover the decompressed data with logscale\n"
+"          --header_size    INT   keep a constant header in the compressed file for "
+"metadata; the compressor will skip a user defined constant.\n"
+"          --compressor     STR   either sz3 or zfp, for prediction-based compression or "
+"transform-based compression.\n";
 ```
 
 For example, we can compress the NYX dataset layer-by-layer although the dimension is only (512, 512, 512). The following command

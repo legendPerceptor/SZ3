@@ -1,0 +1,7 @@
+pandas
+numpy
+pydantic
+tabulate
+PyYAML
+psutil
+matplotlib
