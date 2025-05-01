@@ -7,10 +7,9 @@ import logging
 from datetime import datetime
 import re
 
-DATA_DIR = Path("/lcrc/project/ECP-EZ/yuanjian/APS-data/")
-EXPERIMENT_DIR = Path("/lcrc/project/ECP-EZ/yuanjian/APS-data/experiment-apr4")
+DATA_DIR = Path("/anvil/projects/x-cis220161/datasets/aps/")
+EXPERIMENT_DIR = DATA_DIR / "experiment-apr4"
 DECOMPRESSED_DIR = DATA_DIR / "apr15-logscale-largefiles" / "decompressed_files"
-
 
 baseline_scan_path = DATA_DIR / "base.edf.ge5"
 test_scan_path = DATA_DIR / "test.edf.ge5"

@@ -21,6 +21,8 @@ class Compressor(BaseModel):
     name: str
     ext: str
     executable: Path
+    use_mpi: bool
+    n_threads: List[int]
     compress_params: List[str]
     decompress_params: List[str]
 
@@ -36,6 +38,7 @@ class Dataset(BaseModel):
 
 class CompressionStats():
     compressor_name: str = ""
+    n_threads: int = 1
     layer_depth: int = 1
     dataset_name: str = ""
     data_file_name: str = ""
@@ -194,7 +197,7 @@ def run_decompress_collect(command_line_param_str: str, stats: CompressionStats,
     stats.decompress_wall_time = elapsed_time
     stats.decompress_cpu_time = real_time
 
-def sz3_split_compression(stats: CompressionStats, dataset: Dataset, data_file, compressor: Compressor, compressed_file: str, eb, dimension, depth):
+def sz3_split_compression(stats: CompressionStats, dataset: Dataset, data_file, compressor: Compressor, compressed_file: str, eb, dimension, depth, n_threads:int=16):
     params = compressor.compress_params.copy()
 
     for i, param in enumerate(params):
@@ -204,15 +207,19 @@ def sz3_split_compression(stats: CompressionStats, dataset: Dataset, data_file, 
             params[i] = compressed_file
         elif param == '$eb':
             params[i] = str(eb)
-    num_threads = 16 #min(64 / depth, 16)
-    params = [str(compressor.executable)] + params + [f'-d'] + [str(dim) for dim in dimension] + ["--depth", str(depth), "--threads", str(num_threads)]
+    params = [str(compressor.executable)] + params + [f'-d'] + [str(dim) for dim in dimension] + ["--depth", str(depth)]
     params = params + [f"--data_type {dataset.data_type}"]
+    if compressor.use_mpi:
+        io_threads = max(2, n_threads / 8)
+        params = ["mpiexec -n", str(n_threads)] + params + ["--threads", str(io_threads), "--mpi"]
+    else:
+        params = params + ["--threads", str(n_threads), "--mpi"]
     command_line_param_str = " ".join(params)
     print(command_line_param_str)
     run_compress_and_collect(command_line_param_str, stats, dataset, data_file, compressor, compressed_file, eb, dimension, depth)
    
 
-def sz3_split_decompression(stats: CompressionStats, dataset: Dataset, compressor: Compressor, compressed_file: str, decompressed_file, eb, dimension, depth):
+def sz3_split_decompression(stats: CompressionStats, dataset: Dataset, compressor: Compressor, compressed_file: str, decompressed_file, eb, dimension, depth, n_threads:int=16):
     params = compressor.decompress_params.copy()
     for i, param in enumerate(params):
         if param == '$compressedFileName':
@@ -221,9 +228,14 @@ def sz3_split_decompression(stats: CompressionStats, dataset: Dataset, compresso
             params[i] = decompressed_file
         elif param == '$eb':
             params[i] = str(eb)
-    num_threads = 16 # min(64 / depth, 16)
-    params = [str(compressor.executable)] + params + [f'-d'] + [str(dim) for dim in dimension] + ["--depth", str(depth), "--threads", str(num_threads)]
+    # num_threads = 16 # min(64 / depth, 16)
+    params = [str(compressor.executable)] + params + [f'-d'] + [str(dim) for dim in dimension] + ["--depth", str(depth), "--threads", str(n_threads)]
     params = params + [f"--data_type {dataset.data_type}"]
+    if compressor.use_mpi:
+        io_threads = max(2, n_threads / 8)
+        params = ["mpiexec -n", str(n_threads)] + params + ["--threads", str(io_threads), "--mpi"]
+    else:
+        params = params + ["--threads", str(n_threads), "--mpi"]
     command_line_param_str = " ".join(params)
     print(command_line_param_str)
     run_decompress_collect(command_line_param_str, stats, dataset, compressor, eb, depth)
@@ -274,6 +286,7 @@ def benchmark(config, do_compression: bool, do_decompression: bool):
     stats_file_path = f"{log_prefix}/benchmark_stats.csv"
     global_stats = {
         "compressor_name": [],
+        "n_threads": [],
         "layer_depth": [],
         "dataset_name": [],
         "data_file_name": [],
@@ -289,40 +302,43 @@ def benchmark(config, do_compression: bool, do_decompression: bool):
     }
     logger.info(f"start running benchmark on #{len(datasets)} datasets with #{len(compressors)} compressors!")
     for compressor in compressors:
-        for dataset in datasets:
-            logger.info(f"ebs: {dataset.ebs}")
-            stats = CompressionStats()
-            stats.compressor_name = compressor.name
-            stats.dataset_name = dataset.name
-            dataset_files = [dataset.folder / filename for filename in dataset.fileNames]
-            for data_file_path in dataset_files:
-                for eb in dataset.ebs:
-                    for depth in dataset.depths:
-                        data_file = str(data_file_path)
-                        filename = data_file_path.name
-                        compressed_file = str(Path(config["global"]["large_file_output_folder"]) / (filename + '-' + str(eb) + '-' + compressor.name  + compressor.ext))
-                        verboseLogger.info(f"compressed file: {compressed_file}")
-                        if do_compression:     
-                            try:
-                                sz3_split_compression(stats, dataset, data_file, compressor, compressed_file, eb, dataset.dimension, depth)
-                            except Exception as error:
-                                logger.error("Compression Failed:", error)
-                                sys.exit(1)
-                        decompressed_file = compressed_file + ".dp"
-                        if do_decompression:
-                            try:
-                                sz3_split_decompression(stats, dataset, compressor, compressed_file, decompressed_file, eb, dataset.dimension,depth)
-                            except Exception as error:
-                                logger.error("Decompression Failed:", error)
-                                sys.exit(2)
-                        for key in global_stats.keys():
-                            global_stats[key].append(getattr(stats, key))
-                        print(global_stats)
-                        tmp_df = pd.DataFrame(global_stats)
-                        print(tabulate(tmp_df, headers='keys', tablefmt='psql'))
-                        logger.info(f"Tabulated partial results\n{tabulate(tmp_df, headers='keys', tablefmt='psql')}")
-                        tmp_df.to_csv(stats_file_path, index=False)
-            logger.info(f"finished benchmarking dataset <{dataset.name}> with compressor <{compressor.name}>")
+        logger.info(f"Will test on the following number of threads: {compressor.n_threads}")
+        for n_thread in compressor.n_threads:
+            for dataset in datasets:
+                logger.info(f"ebs: {dataset.ebs}")
+                stats = CompressionStats()
+                stats.n_threads = n_thread
+                stats.compressor_name = compressor.name
+                stats.dataset_name = dataset.name
+                dataset_files = [dataset.folder / filename for filename in dataset.fileNames]
+                for data_file_path in dataset_files:
+                    for eb in dataset.ebs:
+                        for depth in dataset.depths:
+                            data_file = str(data_file_path)
+                            filename = data_file_path.name
+                            compressed_file = str(Path(config["global"]["large_file_output_folder"]) / (filename + '-' + str(eb) + '-' + compressor.name + '-' + str(n_thread) + '-threads-' + compressor.ext))
+                            verboseLogger.info(f"compressed file: {compressed_file}")
+                            if do_compression:     
+                                try:
+                                    sz3_split_compression(stats, dataset, data_file, compressor, compressed_file, eb, dataset.dimension, depth, n_thread)
+                                except Exception as error:
+                                    logger.error("Compression Failed:", error)
+                                    sys.exit(1)
+                            decompressed_file = compressed_file + ".dp"
+                            if do_decompression:
+                                try:
+                                    sz3_split_decompression(stats, dataset, compressor, compressed_file, decompressed_file, eb, dataset.dimension, depth, n_thread)
+                                except Exception as error:
+                                    logger.error("Decompression Failed:", error)
+                                    sys.exit(2)
+                            for key in global_stats.keys():
+                                global_stats[key].append(getattr(stats, key))
+                            print(global_stats)
+                            tmp_df = pd.DataFrame(global_stats)
+                            print(tabulate(tmp_df, headers='keys', tablefmt='psql'))
+                            logger.info(f"Tabulated partial results\n{tabulate(tmp_df, headers='keys', tablefmt='psql')}")
+                            tmp_df.to_csv(stats_file_path, index=False)
+                logger.info(f"finished benchmarking dataset <{dataset.name}> with compressor <{compressor.name}>")
 
 def main():
     parser = argparse.ArgumentParser(
